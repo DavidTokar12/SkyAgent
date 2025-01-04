@@ -43,8 +43,9 @@ class AgentTool:
         int: "integer",
         float: "number",
         bool: "boolean",
-        list: "list",
-        dict: "dictionary",
+        list: "array",
+        dict: "object",
+        type(None): "null",
     }
 
     PYTHON_TYPE_MAP: ClassVar[dict[type, Callable[[Any], Any]]] = {
@@ -54,6 +55,7 @@ class AgentTool:
         bool: lambda x: x if isinstance(x, bool) else str(x).lower() in ("true", "1"),
         list: lambda x: x if isinstance(x, list) else ast.literal_eval(x),
         dict: lambda x: x if isinstance(x, dict) else ast.literal_eval(x),
+        type(None): lambda x: None,
     }
 
     def __init__(self, func, additional_properties: bool = False) -> None:
@@ -67,6 +69,8 @@ class AgentTool:
         self.func = func
         self.name = self.func.__name__
         self.additional_properties = additional_properties
+
+        self.is_async = inspect.iscoroutinefunction(func)
 
         try:
             self.docstring = docstring_parser.parse(self.func.__doc__)

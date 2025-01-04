@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "miniagent"
+name = "skyagent"
 version = "0.1.0"
 description = ""
 authors = ["David Tokar <1413david@gmail.com>"]

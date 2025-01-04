@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from miniagent.agent_tool import AgentTool
-from miniagent.agent_tool import AgentToolParsingError
+from skyagent.agent_tool import AgentTool
+from skyagent.agent_tool import AgentToolParsingError
 
 
 def test_agent_tool_simple_parsing():
@@ -99,6 +99,62 @@ def test_default_arguments():
                     "a": {"type": "integer", "description": "An integer."},
                     "b": {"type": "string", "description": "A string."},
                     "c": {"type": "number", "description": "A float."},
+                },
+                "required": ["a", "b"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def test_missing_docstring():
+    def func(a: int, b: str) -> str:
+        return "Test string!"
+
+    with pytest.raises(AgentToolParsingError):
+        AgentTool(func=func)
+
+
+def test_missing_arg_in_docstring():
+    def func(a: int, b: str, c: float) -> str:
+        """
+        Args:
+            a: An integer.
+            b: A string.
+        """
+        return "Test string!"
+
+    with pytest.raises(AgentToolParsingError):
+        AgentTool(func=func)
+
+
+def test_complex_argument_types():
+    def func(a: list, b: dict) -> str:
+        """A test function with complex types.
+
+        Args:
+            a: A list of integers.
+            b: A dictionary with string keys and values.
+        """
+        return "Test string!"
+
+    tool = AgentTool(func=func)
+
+    result = tool.to_dict()
+
+    assert result == {
+        "type": "function",
+        "function": {
+            "name": "func",
+            "description": "A test function with complex types. ",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "array", "description": "A list of integers."},
+                    "b": {
+                        "type": "object",
+                        "description": "A dictionary with string keys and values.",
+                    },
                 },
                 "required": ["a", "b"],
                 "additionalProperties": False,
