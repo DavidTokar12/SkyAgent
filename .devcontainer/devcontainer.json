@@ -23,7 +23,7 @@
         }
     },
     "remoteUser": "root",
-    "mounts": [
-        "type=bind,source=/${localEnv:HOME}/.ssh,target=/root/.ssh,readonly"
-    ]
+    // "mounts": [
+    //     "type=bind,source=/${localEnv:HOME}/.ssh,target=/root/.ssh,readonly"
+    // ]
 }

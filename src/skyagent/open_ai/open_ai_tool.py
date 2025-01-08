@@ -12,6 +12,8 @@ from typing import get_type_hints
 
 import docstring_parser
 
+from skyagent.base_classes import AgentDetrimentalError
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,7 +34,7 @@ class AgentToolParameter:
     description: str
 
 
-class AgentTool:
+class OpenAITool:
     """
     A class representing a tool (function) the LLM can call.
     Analyzes the function's signature and docstring to build a JSON schema.
@@ -58,7 +60,7 @@ class AgentTool:
         type(None): lambda x: None,
     }
 
-    def __init__(self, func, additional_properties: bool = False) -> None:
+    def __init__(self, tool_function, additional_properties: bool = False) -> None:
         """
         Initialize a Tool by analyzing the provided function.
 
@@ -66,17 +68,17 @@ class AgentTool:
         :param additional_properties: Whether to allow additional
                                       properties when calling this tool.
         """
-        self.func = func
-        self.name = self.func.__name__
+        self.tool_function = tool_function
+        self.name = self.tool_function.__name__
         self.additional_properties = additional_properties
 
-        self.is_async = inspect.iscoroutinefunction(func)
+        self.is_async = inspect.iscoroutinefunction(tool_function)
 
         try:
-            self.docstring = docstring_parser.parse(self.func.__doc__)
+            self.docstring = docstring_parser.parse(self.tool_function.__doc__)
         except Exception as e:
             raise AgentToolParsingError(
-                f"Failed to parse docstring for function '{self.name}': {e}"
+                "Failed to parse docstring for function '%s': '%s'", self.name, e
             )
 
         self.long_description = self.docstring.long_description
@@ -84,8 +86,8 @@ class AgentTool:
 
         if not self.short_description and not self.long_description:
             raise AgentToolParsingError(
-                f"Function '{
-                    self.name}' must have a function description in it's docstring."
+                "Function '%s' must have a function description in it's docstring.",
+                self.name,
             )
 
         self.description = (
@@ -99,28 +101,29 @@ class AgentTool:
         self.parameters: list[AgentToolParameter] = []
         self.required_properties = []
 
-        self.param_types = {}
+        self.param_name_to_type = {}
 
-        signature = inspect.signature(func)
-        type_hints = get_type_hints(func)
+        signature = inspect.signature(tool_function)
+        type_hints = get_type_hints(tool_function)
 
         for param_name, param in signature.parameters.items():
 
             if param_name not in type_hints:
                 raise AgentToolParsingError(
-                    f"Parameter '{param_name}' must have a type annotation."
+                    "Parameter '%s' must have a type annotation.", param_name
                 )
 
             annotation = type_hints[param_name]
 
             if annotation not in self.ALLOWED_TYPES:
                 raise AgentToolParsingError(
-                    f"Parameter '{param_name}' must be annotated with one of "
-                    f"{list(self.ALLOWED_TYPES.keys())
-                       }, but got '{annotation}'."
+                    "Parameter '%s' must be annotated with one of '%s' but got '%s'.",
+                    param_name,
+                    list(self.ALLOWED_TYPES.keys()),
+                    annotation,
                 )
 
-            self.param_types[param_name] = annotation
+            self.param_name_to_type[param_name] = annotation
             json_type = self.ALLOWED_TYPES[annotation]
 
             self.parameters.append(
@@ -139,9 +142,9 @@ class AgentTool:
             raise AgentToolParsingError("Return type annotation is required.")
         if return_annotation not in self.ALLOWED_TYPES:
             raise AgentToolParsingError(
-                f"Return type must be one of {
-                    list(self.ALLOWED_TYPES.keys())}, "
-                f"but got '{return_annotation}'."
+                "Return type must be one of '%s' but got '%s'.",
+                list(self.ALLOWED_TYPES.keys()),
+                return_annotation,
             )
 
         logger.debug(
@@ -177,3 +180,27 @@ class AgentTool:
                 },
             },
         }
+
+    def validate_and_convert_input_param(
+        self, input_param_name: str, input_param_value: Any
+    ) -> Any:
+
+        if input_param_name not in self.param_name_to_type:
+            raise AgentDetrimentalError(
+                "Not defined input parameter '%s' in tool call of function '%s'.",
+                input_param_name,
+                self.name,
+            )
+
+        expected_type = self.param_name_to_type[input_param_name]
+        conversion_func = self.PYTHON_TYPE_MAP[expected_type]
+
+        try:
+            return conversion_func(input_param_value)
+        except ValueError as e:
+            raise AgentDetrimentalError(
+                "Failed to convert parameter '%s' to '%s': '%s'",
+                input_param_name,
+                expected_type,
+                e,
+            )
