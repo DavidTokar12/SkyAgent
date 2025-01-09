@@ -3,7 +3,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 
 from skyagent.open_ai.open_ai_agent import OpenAIAgent
-from skyagent.open_ai.open_ai_tool import OpenAITool
+from skyagent.open_ai.open_ai_tool import OpenAiTool
 
 
 load_dotenv("/workspaces/SkyAgent/.env")
@@ -17,7 +17,7 @@ def evaluate_expression(expression: str) -> float:
     return eval(expression)
 
 
-tool = OpenAITool(tool_function=evaluate_expression)
+tool = OpenAiTool(tool_function=evaluate_expression)
 
 agent = OpenAIAgent(
     name="Calculator",

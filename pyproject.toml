@@ -11,6 +11,7 @@ openai = "^1.58.1"
 python-dotenv = "^1.0.1"
 pydantic = "^2.10.4"
 docstring-parser = "^0.16"
+rich = "^13.9.4"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"

@@ -8,17 +8,19 @@ from typing import Any
 
 from openai import OpenAI
 
-from skyagent.base_classes import AgentConversationToLongError
-from skyagent.base_classes import AgentCopyrightError
-from skyagent.base_classes import AgentDetrimentalError
-from skyagent.base_classes import AssistantChatMessage
-from skyagent.base_classes import CompletionResponse
-from skyagent.base_classes import ImageChatMessage
-from skyagent.base_classes import LLMClient
-from skyagent.base_classes import LLMUsage
-from skyagent.base_classes import ToolCall
-from skyagent.base_classes import ToolCallOutgoingMessage
-from skyagent.base_classes import UserChatMessage
+from skyagent.base.chat_message import AssistantChatMessage
+from skyagent.base.chat_message import BaseChatMessage
+from skyagent.base.chat_message import SystemChatMessage
+from skyagent.base.chat_message import ToolCallOutgoingMessage
+from skyagent.base.chat_message import UserChatMessage
+from skyagent.base.exceptions import SkyAgentContextWindowSaturatedError
+from skyagent.base.exceptions import SkyAgentCopyrightError
+from skyagent.base.exceptions import SkyAgentDetrimentalError
+from skyagent.base.llm_api_adapter import CompletionResponse
+from skyagent.base.llm_api_adapter import LlmApiAdapter
+from skyagent.base.llm_api_adapter import LlmUsage
+from skyagent.base.tools import ToolCall
+from skyagent.base.tools import ToolCallResult
 
 
 if TYPE_CHECKING:
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
     from skyagent.open_ai.open_ai_tool import OpenAITool
 
 
-class OpenAILLMClient(LLMClient):
+class OpenAiApiAdapter(LlmApiAdapter):
 
     def __init__(
         self,
@@ -42,28 +44,27 @@ class OpenAILLMClient(LLMClient):
 
     def get_completion(
         self,
-        chat_history: list[
-            UserChatMessage | ImageChatMessage | ToolCallOutgoingMessage
-        ],
+        chat_history: list[BaseChatMessage],
         response_format: Any | None = None,
         tools: list[OpenAITool] | None = None,
     ) -> CompletionResponse:
 
         if len(chat_history) == 0:
-            raise AgentDetrimentalError("message_history cannot be an empty array!")
+            raise SkyAgentDetrimentalError("message_history cannot be an empty array!")
 
         try:
 
             messages = []
             for message in chat_history:
-                if isinstance(message, UserChatMessage | AssistantChatMessage):
+                if isinstance(
+                    message, UserChatMessage | AssistantChatMessage | SystemChatMessage
+                ):
                     messages.append(
                         {
                             "role": message.role.value,
                             "content": message.content,
                         }
                     )
-
                 elif isinstance(message, ToolCallOutgoingMessage):
                     messages.append(
                         {
@@ -71,10 +72,6 @@ class OpenAILLMClient(LLMClient):
                             "content": message.content,
                             "tool_call_id": message.tool_call_id,
                         }
-                    )
-                elif isinstance(message, ImageChatMessage):
-                    messages.append(
-                        {"role": message.role.value, "image_url": message.image_url}
                     )
                 else:
                     # we keep incoming tool calls
@@ -89,17 +86,17 @@ class OpenAILLMClient(LLMClient):
                 temperature=self.temperature,
             )
         except Exception as e:
-            raise AgentDetrimentalError("Chat completion failed: '%s'", e)
+            raise SkyAgentDetrimentalError("Chat completion failed: '%s'", e)
 
         finish_reason = response.choices[0].finish_reason
 
         if finish_reason == "length":
-            raise AgentConversationToLongError("Context window exceeded!")
+            raise SkyAgentContextWindowSaturatedError("Context window exceeded!")
 
         if finish_reason == "content_filter":
-            raise AgentCopyrightError("Query was filtered due to copyright reasons!")
+            raise SkyAgentCopyrightError("Query was filtered due to copyright reasons!")
 
-        usage = LLMUsage(
+        usage = LlmUsage(
             completion_tokens=response.usage.completion_tokens,
             prompt_tokens=response.usage.prompt_tokens,
         )
@@ -129,25 +126,20 @@ class OpenAILLMClient(LLMClient):
                 usage=usage,
             )
         else:
-            raise AgentDetrimentalError(
+            raise SkyAgentDetrimentalError(
                 "OpenAI API returned with an unexpected finish reason: '%s'",
                 finish_reason,
             )
 
     def generate_tool_result_answer(
-        self, tool_call: ToolCall, result: Any
+        self, tool_call_result: ToolCallResult
     ) -> ToolCallOutgoingMessage:
-        """
-        Generates a message dict containing the result of a tool call.
-        This message is appended to the conversation history so that
-        the model can consume the tool's result.
-        """
 
         content_dict = {
-            "input": tool_call.arguments,
-            "output": result,
+            "input": tool_call_result.arguments,
+            "output": tool_call_result.result,
         }
 
         return ToolCallOutgoingMessage(
-            content=json.dumps(content_dict), tool_call_id=tool_call.id
+            content=json.dumps(content_dict), tool_call_id=tool_call_result.id
         )

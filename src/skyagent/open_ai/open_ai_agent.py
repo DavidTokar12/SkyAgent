@@ -7,11 +7,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from skyagent.base_classes import AgentBase
-from skyagent.base_classes import AssistantChatMessage
-from skyagent.base_classes import ChatMessageRole
-from skyagent.base_classes import UserChatMessage
-from skyagent.open_ai.open_ai_llm_client import OpenAILLMClient
+from skyagent.base.agent import BaseAgent
+from skyagent.base.chat_message import AssistantChatMessage
+from skyagent.base.chat_message import ChatMessageRole
+from skyagent.base.chat_message import UserChatMessage
+from skyagent.open_ai.open_ai_api_adapter import OpenAiApiAdapter
 
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class FunctionModel(BaseModel):
     name: str
 
 
-class OpenAIAgent(AgentBase):
+class OpenAIAgent(BaseAgent):
     """
     Orchestrates conversation between the user, the openAI model, and available tools.
     """
@@ -45,20 +45,11 @@ class OpenAIAgent(AgentBase):
         tools: list[OpenAITool] | None = None,
         max_turns: int = 10,
         token: str | None = None,
+        parallelize: bool = True,
+        num_processes: int = 4,
         temperature: float = 0.0,
         timeout: int = 3,
     ) -> None:
-        """
-        Initialize the agent.
-
-        :param name: The agent's name.
-        :param model: The model name.
-        :param system_prompt: Instructional system message for the model, or the path to a markdown or text file.
-        :param tools: A list of AgentTool instances.
-        :param max_turns: The maximum number of turns in the conversation.
-        :param token: Your OpenAI API key.
-        :param temperature: The temperature of the LLM.
-        """
 
         super().__init__(
             name=name,
@@ -66,13 +57,15 @@ class OpenAIAgent(AgentBase):
             system_prompt=system_prompt,
             tools=tools,
             max_turns=max_turns,
+            parallelize=parallelize,
+            num_processes=num_processes,
         )
 
         self.temperature = temperature
         self.timeout = timeout
         self.token = token
 
-        self.client = OpenAILLMClient(
+        self.client = OpenAiApiAdapter(
             model=self.model,
             token=self.token,
             temperature=self.temperature,
@@ -97,12 +90,14 @@ class OpenAIAgent(AgentBase):
 
             if completion.tool_calls:
 
-                for tool_call in completion.tool_calls:
-                    tool_call_result = self.execute_tool_call(tool_call=tool_call)
+                tool_call_results = self.execute_tool_calls(completion.tool_calls)
+
+                for tool_call_result in tool_call_results:
                     tool_result_answer = self.client.generate_tool_result_answer(
-                        tool_call=tool_call, result=tool_call_result
+                        tool_call_result=tool_call_result
                     )
                     self.chat_history.append(tool_result_answer)
+
             else:
                 self.chat_history.append(
                     AssistantChatMessage(content=completion.content)
