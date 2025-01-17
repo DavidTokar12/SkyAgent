@@ -86,7 +86,7 @@ class OpenAiApiAdapter(LlmApiAdapter):
                 temperature=self.temperature,
             )
         except Exception as e:
-            raise SkyAgentDetrimentalError("Chat completion failed: '%s'", e)
+            raise SkyAgentDetrimentalError(f"Chat completion failed: '{e}'")
 
         finish_reason = response.choices[0].finish_reason
 
@@ -127,11 +127,11 @@ class OpenAiApiAdapter(LlmApiAdapter):
             )
         else:
             raise SkyAgentDetrimentalError(
-                "OpenAI API returned with an unexpected finish reason: '%s'",
-                finish_reason,
+                f"OpenAI API returned with an unexpected finish reason: '{
+                    finish_reason}'"
             )
 
-    def generate_tool_result_answer(
+    def convert_tool_result_answer(
         self, tool_call_result: ToolCallResult
     ) -> ToolCallOutgoingMessage:
 

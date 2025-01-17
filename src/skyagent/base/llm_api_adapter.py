@@ -9,7 +9,9 @@ from skyagent.base.tools import ToolCall  # noqa: TCH001
 
 if TYPE_CHECKING:
     from skyagent.base.chat_message import BaseChatMessage
+    from skyagent.base.chat_message import ToolCallOutgoingMessage
     from skyagent.base.tools import BaseTool
+    from skyagent.base.tools import ToolCallResult
 
 
 class LlmUsage(BaseModel):
@@ -45,3 +47,10 @@ class LlmApiAdapter:
         tools: list[BaseTool] | None = None,
     ) -> CompletionResponse:
         raise NotImplementedError("The get_completion method must be implemented!")
+
+    def convert_tool_result_answer(
+        self, tool_call_result: ToolCallResult
+    ) -> ToolCallOutgoingMessage:
+        raise NotImplementedError(
+            "The generate_tool_result_answer method must be implemented!"
+        )

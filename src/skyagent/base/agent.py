@@ -1,27 +1,26 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import Any
 
 from skyagent.base.chat_message import SystemChatMessage
 from skyagent.base.exceptions import SkyAgentDetrimentalError
+from skyagent.base.logger import AgentLogger
 from skyagent.base.tools import ToolCallResult
 from skyagent.base.utils import get_or_create_event_loop
 
 
 if TYPE_CHECKING:
+    from skyagent.base.chat_message import BaseChatMessage
+    from skyagent.base.llm_api_adapter import CompletionResponse
     from skyagent.base.tools import TOOL_ARG_TYPES
+    from skyagent.base.tools import BaseTool
     from skyagent.base.tools import ToolCall
-    from skyagent.open_ai.open_ai_tool import OpenAITool
-
-logger = logging.getLogger(__name__)
 
 
 def run_async_in_task(async_func, *args, **kwargs):
@@ -37,15 +36,26 @@ class BaseAgent:
         name: str,
         model: str,
         system_prompt: str | Path,
-        tools: list[OpenAITool] | None,
+        tools: list[BaseTool] | None,
         max_turns: int = 10,
-        # Concurrency parameters:
+        token: str | None = None,
         parallelize: bool = True,
         num_processes: int = 4,
+        temperature: float = 0.0,
+        timeout: int = 3,
+        log_file_path: Path | None = None,
+        log_server: str | None = None,
+        enable_live_display: bool = False,
     ):
         self.agent_id = str(uuid.uuid4())
         self.name = name
         self.model = model
+        self.token = token
+        self.temperature = temperature
+        self.timeout = timeout
+        self.log_file_path = log_file_path
+        self.log_server = log_server
+        self.enable_live_display = enable_live_display
 
         if isinstance(system_prompt, Path):
             if not system_prompt.exists():
@@ -62,7 +72,9 @@ class BaseAgent:
 
         self.max_turns = max_turns
 
-        self.chat_history = [SystemChatMessage(content=self.system_prompt)]
+        self.chat_history: list[BaseChatMessage] = [
+            SystemChatMessage(content=self.system_prompt)
+        ]
 
         # Concurrency-related
         self.parallelize = parallelize
@@ -72,19 +84,30 @@ class BaseAgent:
             max_workers=num_processes if parallelize else 1
         )
 
-        logger.debug(
-            "Initialized Agent '%s' with model '%s', system prompt '%s', tool definitions: '%s', "
-            "parallelize=%s, num_processes=%d",
-            self.name,
-            self.model,
-            self.system_prompt,
-            list(self.tools_dict.keys()),
-            self.parallelize,
-            self.num_processes,
+        self.logger = AgentLogger(
+            agent_id=self.agent_id,
+            agent_name=self.name,
+            agent_model=self.model,
+            agent_parallelize=self.parallelize,
+            agent_chat_history=self.chat_history,
+            agent_tools=self.tools_array,
+            log_file_path=self.log_file_path,
+            log_server=self.log_server,
+            enable_live_display=self.enable_live_display,
         )
 
-    def call(self, query: str) -> Any:
-        raise NotImplementedError("The call method must be implemented!")
+        self.logger.initialized_agent()
+
+    def call(self, query: str) -> CompletionResponse:
+        if self.enable_live_display:
+            with self.logger.live_dashboard():
+                return self._call_implementation(query=query)
+        return self._call_implementation(query=query)
+
+    def _call_implementation(self, query: str) -> CompletionResponse:
+        raise NotImplementedError(
+            "The _call_implementation method must be implemented!"
+        )
 
     def execute_tool_calls(self, tool_calls: list[ToolCall]) -> list[TOOL_ARG_TYPES]:
 
@@ -99,9 +122,8 @@ class BaseAgent:
 
             if not tool_wrapper:
                 raise SkyAgentDetrimentalError(
-                    "Tool '%s' not found in the agent named '%s' tool definitions.",
-                    tool_call.function_name,
-                    self.name,
+                    f"Tool '{tool_call.function_name}' not found in the agent named '{
+                        self.name}' tool definitions.",
                 )
 
             if tool_wrapper.is_compute_heavy:
@@ -126,9 +148,7 @@ class BaseAgent:
 
         if not tool_wrapper:
             raise SkyAgentDetrimentalError(
-                "Tool '%s' not found in the agent named '%s' tool definitions.",
-                tool_call.function_name,
-                self.name,
+                "Tool '{tool_call.function_name}' not found in the agent named '{self.name}' tool definitions.",
             )
 
         converted_args = {}
@@ -148,10 +168,9 @@ class BaseAgent:
         results = []
 
         for tool_call in tool_calls:
-            logger.debug(
-                "Executing tool '%s' with arguments: %s",
-                tool_call.function_name,
-                tool_call.arguments,
+
+            self.logger.started_executing_tool_call(
+                tool_call, is_async=False, is_compute_heavy=False
             )
 
             tool_wrapper = self.tools_dict.get(tool_call.function_name)
@@ -159,21 +178,19 @@ class BaseAgent:
 
             try:
 
-                result = tool_wrapper.tool_function(**parsed_arguments)
-                logger.debug(
-                    "Tool '%s' execution result: '%s' from inputs '%s'",
-                    tool_call.function_name,
-                    result,
-                    parsed_arguments,
+                result_value = tool_wrapper.tool_function(**parsed_arguments)
+                tool_call_result = ToolCallResult(
+                    id=tool_call.id,
+                    function_name=tool_call.function_name,
+                    arguments=tool_call.arguments,
+                    result=result_value,
                 )
-                results.append(
-                    ToolCallResult(
-                        id=tool_call.id,
-                        function_name=tool_call.function_name,
-                        arguments=tool_call.arguments,
-                        result=result,
-                    )
+
+                self.logger.finished_executing_tool_call(
+                    tool_call_result=tool_call_result
                 )
+
+                results.append(tool_call_result)
 
             except Exception as e:
                 raise SkyAgentDetrimentalError(
@@ -198,9 +215,16 @@ class BaseAgent:
 
                 tool_wrapper = self.tools_dict.get(tool_call.function_name)
 
+                self.logger.started_executing_tool_call(
+                    tool_call,
+                    is_async=tool_wrapper.is_async,
+                    is_compute_heavy=True,
+                )
+
                 if not tool_wrapper:
                     raise SkyAgentDetrimentalError(
-                        f"Tool {tool_call.function_name} not found in the agent named {self.name} tool definitions.",
+                        f"Tool {tool_call.function_name} not found in the agent named {
+                            self.name} tool definitions.",
                     )
 
                 parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
@@ -223,15 +247,19 @@ class BaseAgent:
                 tool_call = futures[future]
 
                 try:
-                    tool_call_result = future.result()
-                    results.append(
-                        ToolCallResult(
-                            id=tool_call.id,
-                            function_name=tool_call.function_name,
-                            arguments=tool_call.arguments,
-                            result=tool_call_result,
-                        )
+                    result_value = future.result()
+                    tool_call_result = ToolCallResult(
+                        id=tool_call.id,
+                        function_name=tool_call.function_name,
+                        arguments=tool_call.arguments,
+                        result=result_value,
                     )
+
+                    self.logger.finished_executing_tool_call(
+                        tool_call_result=tool_call_result
+                    )
+
+                    results.append(tool_call_result)
                 except Exception as e:
                     raise SkyAgentDetrimentalError(
                         f"Tool execution failed with error: {e}"
@@ -252,57 +280,76 @@ class BaseAgent:
             tasks = []
             for tool_call in tool_calls:
                 tool_wrapper = self.tools_dict.get(tool_call.function_name)
+
                 if not tool_wrapper:
                     raise SkyAgentDetrimentalError(
                         f"Tool '{tool_call.function_name}' not found in agent '{
                             self.name}' definitions."
                     )
+
+                self.logger.started_executing_tool_call(
+                    tool_call, is_async=True, is_compute_heavy=False
+                )
+
                 parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
                 tasks.append(
                     loop.create_task(tool_wrapper.tool_function(**parsed_arguments))
                 )
+
             all_results = loop.run_until_complete(
                 asyncio.gather(*tasks, return_exceptions=True)
             )
-            for tool_call, result_or_exc in zip(tool_calls, all_results):
-                if isinstance(result_or_exc, Exception):
+
+            for tool_call, result_value_or_exc in zip(tool_calls, all_results):
+                if isinstance(result_value_or_exc, Exception):
                     raise SkyAgentDetrimentalError(
                         f"Async tool '{tool_call.function_name}' execution failed: {
-                            result_or_exc}"
+                            result_value_or_exc}"
                     )
-                results.append(
-                    ToolCallResult(
-                        id=tool_call.id,
-                        function_name=tool_call.function_name,
-                        arguments=tool_call.arguments,
-                        result=result_or_exc,
-                    )
+
+                result = ToolCallResult(
+                    id=tool_call.id,
+                    function_name=tool_call.function_name,
+                    arguments=tool_call.arguments,
+                    result=result_value_or_exc,
                 )
+
+                self.logger.finished_executing_tool_call(result)
+
+                results.append(result)
         else:
             for tool_call in tool_calls:
                 tool_wrapper = self.tools_dict.get(tool_call.function_name)
+
                 if not tool_wrapper:
                     raise SkyAgentDetrimentalError(
                         f"Tool '{tool_call.function_name}' not found in agent '{
                             self.name}' definitions."
                     )
+
+                self.logger.started_executing_tool_call(
+                    tool_call, is_async=True, is_compute_heavy=False
+                )
+
                 parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
                 try:
                     result = loop.run_until_complete(
                         tool_wrapper.tool_function(**parsed_arguments)
                     )
-                    results.append(
-                        ToolCallResult(
-                            id=tool_call.id,
-                            function_name=tool_call.function_name,
-                            arguments=tool_call.arguments,
-                            result=result,
-                        )
+                    result = ToolCallResult(
+                        id=tool_call.id,
+                        function_name=tool_call.function_name,
+                        arguments=tool_call.arguments,
+                        result=result,
                     )
+
+                    self.logger.finished_executing_tool_call(result)
+
+                    results.append(result)
                 except Exception as e:
                     raise SkyAgentDetrimentalError(
                         f"Async tool '{
                             tool_call.function_name}' execution failed: {e}"
-                    ) from e
+                    )
 
         return results

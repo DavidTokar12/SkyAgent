@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import logging
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -21,8 +20,6 @@ from skyagent.base.exceptions import SkyAgentToolParsingError
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
-
 TOOL_ARG_TYPES = str | int | float | bool | list | dict | None
 
 
@@ -34,6 +31,15 @@ class ToolCall(BaseModel):
     id: str
     function_name: str
     arguments: dict[str, TOOL_ARG_TYPES]
+
+    def __str__(self) -> str:
+        return (
+            f"ToolCall(\n"
+            f"  id={self.id},\n"
+            f"  function_name={self.function_name},\n"
+            f"  arguments={self.arguments}\n"
+            f")"
+        )
 
 
 class ToolCallResult(BaseModel):
@@ -135,7 +141,7 @@ class BaseTool:
 
             if param_name not in type_hints:
                 raise SkyAgentToolParsingError(
-                    "Parameter '%s' must have a type annotation.", param_name
+                    "Parameter '{param_name}' must have a type annotation."
                 )
 
             annotation = type_hints[param_name]
@@ -168,12 +174,6 @@ class BaseTool:
                 f"Return type must be one of '{list(self.ALLOWED_TYPES.keys())}' but got '{
                     return_annotation}'."
             )
-
-        logger.debug(
-            "Initialized AgentTool for function '%s' with schema: %s",
-            self.name,
-            self.to_dict(),
-        )
 
     def to_dict(self) -> dict[str, Any]:
         raise NotImplementedError("Tools must implement the to dict method.")
