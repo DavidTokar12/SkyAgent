@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 
 from concurrent.futures import ProcessPoolExecutor
@@ -8,7 +9,10 @@ from concurrent.futures import as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from skyagent.base.chat_message import AssistantChatMessage
+from skyagent.base.chat_message import ChatMessageRole
 from skyagent.base.chat_message import SystemChatMessage
+from skyagent.base.chat_message import UserChatMessage
 from skyagent.base.exceptions import SkyAgentDetrimentalError
 from skyagent.base.logger import AgentLogger
 from skyagent.base.tools import ToolCallResult
@@ -42,11 +46,29 @@ class BaseAgent:
         parallelize: bool = True,
         num_processes: int = 4,
         temperature: float = 0.0,
-        timeout: int = 3,
+        timeout: int = 10,
         log_file_path: Path | None = None,
         log_server: str | None = None,
         enable_live_display: bool = False,
     ):
+        """
+        Initializes a new instance of Agent..
+
+        Args:
+            name (str): Human-readable name for the agent.
+            model (str): The LLM model name/identifier.
+            system_prompt (str | Path): The system-level prompt or path to file containing it.
+            tools (list[BaseTool] | None): Optional list of tools the agent can use.
+            max_turns (int, optional): Max conversation turns before completion. Defaults to 10.
+            token (str | None, optional): API token or authentication credentials for the LLM. Defaults to None.
+            parallelize (bool, optional): If True, allows concurrent processing of tool calls. Defaults to True.
+            num_processes (int, optional): Number of worker processes for heavy or concurrent tasks. Defaults to 4.
+            temperature (float, optional): LLM temperature setting. Defaults to 0.0.
+            timeout (int, optional): Timeout in seconds for LLM queries. Defaults to 3.
+            log_file_path (Path | None, optional): Path for log file output. Defaults to None.
+            log_server (str | None, optional): Server address for HTTP logging. Defaults to None.
+            enable_live_display (bool, optional): If True, shows a Rich live logging dashboard. Defaults to False.
+        """
         self.agent_id = str(uuid.uuid4())
         self.name = name
         self.model = model
@@ -60,7 +82,7 @@ class BaseAgent:
         if isinstance(system_prompt, Path):
             if not system_prompt.exists():
                 raise FileNotFoundError(
-                    "System prompt file not found: '%s'", system_prompt
+                    f"System prompt file not found: '{system_prompt}'"
                 )
             with open(system_prompt) as f:
                 self.system_prompt = f.read()
@@ -80,10 +102,6 @@ class BaseAgent:
         self.parallelize = parallelize
         self.num_processes = num_processes
 
-        self.process_executor = ProcessPoolExecutor(
-            max_workers=num_processes if parallelize else 1
-        )
-
         self.logger = AgentLogger(
             agent_id=self.agent_id,
             agent_name=self.name,
@@ -96,21 +114,113 @@ class BaseAgent:
             enable_live_display=self.enable_live_display,
         )
 
-        self.logger.initialized_agent()
+        self._initialize_client()
 
-    def call(self, query: str) -> CompletionResponse:
-        if self.enable_live_display:
-            with self.logger.live_dashboard():
-                return self._call_implementation(query=query)
-        return self._call_implementation(query=query)
+        self.logger.log_agent_initialized()
 
-    def _call_implementation(self, query: str) -> CompletionResponse:
+    def _initialize_client(self):
+        """
+        Initializes or configures the LLM client.
+
+        Raises:
+            NotImplementedError: Must be overridden by child classes for specific LLM setup.
+        """
         raise NotImplementedError(
-            "The _call_implementation method must be implemented!"
+            "Client initialization must be implemented by agent child classes."
         )
 
-    def execute_tool_calls(self, tool_calls: list[ToolCall]) -> list[TOOL_ARG_TYPES]:
+    def call_agent(self, query: str) -> CompletionResponse:
+        """
+        Entry point to invoke the agent with a given query.
 
+        Args:
+            query (str): The user-provided query or request.
+
+        Returns:
+            CompletionResponse: The final LLM response, if successfully completed.
+        """
+        if self.enable_live_display:
+            with self.logger.live_dashboard_context():
+                return self._execute_agent_call(query=query)
+        return self._execute_agent_call(query=query)
+
+    def _execute_agent_call(self, query: str) -> CompletionResponse:
+        """
+        Handles the main call logic, orchestrating the conversation loop and tool usage.
+
+        Args:
+            query (str): The user or external request to process.
+
+        Returns:
+            CompletionResponse: The final LLM completion, if available.
+
+        Raises:
+            SkyAgentDetrimentalError: If there is a fatal error during execution.
+        """
+        try:
+            self.logger.log_query_received(query=query)
+
+            start_time = time.time()
+
+            self.chat_history.append(
+                UserChatMessage(role=ChatMessageRole.user, content=query)
+            )
+
+            for current_turn in range(1, self.max_turns + 1, 1):
+
+                self.logger.log_chat_loop_started(turn=current_turn)
+
+                completion = self.client.get_completion(
+                    chat_history=self.chat_history, tools=self.tools_array
+                )
+
+                if completion.tool_calls:
+
+                    self.logger.log_tool_calls_received(completion.tool_calls)
+
+                    tool_call_results = self._execute_all_tool_calls(
+                        completion.tool_calls
+                    )
+
+                    for tool_call_result in tool_call_results:
+                        tool_result_answer = self.client.convert_tool_result_answer(
+                            tool_call_result=tool_call_result
+                        )
+                        self.chat_history.append(tool_result_answer)
+
+                else:
+                    self.chat_history.append(
+                        AssistantChatMessage(content=completion.content)
+                    )
+
+                    execution_time = time.time() - start_time
+
+                    self.logger.log_final_completion(
+                        completion=completion, execution_time=execution_time
+                    )
+
+                    return completion
+
+            self.logger.log_error(
+                SkyAgentDetrimentalError("Max turns reached with no final completion.")
+            )
+            # TODO also return a completion, with content None, and usage information
+            return None
+        except SkyAgentDetrimentalError as e:
+            self.logger.log_error(e)
+
+    def _execute_all_tool_calls(
+        self, tool_calls: list[ToolCall]
+    ) -> list[ToolCallResult]:
+        """
+        Routes tool calls into inline, async, or compute-heavy methods and collects the results.
+
+        Args:
+            tool_calls (list[ToolCall]): A batch of tool calls requested by the model.
+
+        Returns:
+            list[ToolCallResult]: The aggregated results of all tool calls.
+        """
         inline_tool_calls = []
         async_tool_calls = []
         compute_heavy_tool_calls = []
@@ -133,17 +243,28 @@ class BaseAgent:
             else:
                 inline_tool_calls.append(tool_call)
 
-        inline_results = self.execute_inline_tool_calls(tool_calls=inline_tool_calls)
-        compute_heavy_results = self.execute_compute_heavy_tool_calls(
+        inline_results = self._execute_inline_tool_calls(tool_calls=inline_tool_calls)
+        compute_heavy_results = self._execute_compute_heavy_tool_calls(
             tool_calls=compute_heavy_tool_calls
         )
-        async_results = self.execute_async_tool_calls(tool_calls=async_tool_calls)
+        async_results = self._execute_async_tool_calls(tool_calls=async_tool_calls)
 
         return inline_results + compute_heavy_results + async_results
 
-    def parse_tool_call_arguments(
-        self, tool_call: ToolCall
-    ) -> dict[str, TOOL_ARG_TYPES]:
+    def _parse_tool_call_args(self, tool_call: ToolCall) -> dict[str, TOOL_ARG_TYPES]:
+        """
+        Converts and validates raw tool call arguments into typed forms required by the tool.
+
+        Args:
+            tool_call (ToolCall): The requested tool call details.
+
+        Returns:
+            dict[str, TOOL_ARG_TYPES]: A dictionary of validated and converted argument values.
+
+        Raises:
+            SkyAgentDetrimentalError: If the tool does not exist in the agent's tool dictionary.
+        """
+
         tool_wrapper = self.tools_dict.get(tool_call.function_name)
 
         if not tool_wrapper:
@@ -161,9 +282,18 @@ class BaseAgent:
 
         return converted_args
 
-    def execute_inline_tool_calls(
+    def _execute_inline_tool_calls(
         self, tool_calls: list[ToolCall]
     ) -> list[ToolCallResult]:
+        """
+        Executes a list of inline (synchronous) tool calls sequentially.
+
+        Args:
+            tool_calls (list[ToolCall]): Tool calls that are neither async nor compute-heavy.
+
+        Returns:
+            list[ToolCallResult]: A list of results from inline tool execution.
+        """
 
         results = []
 
@@ -174,7 +304,7 @@ class BaseAgent:
             )
 
             tool_wrapper = self.tools_dict.get(tool_call.function_name)
-            parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
+            parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
 
             try:
 
@@ -186,9 +316,7 @@ class BaseAgent:
                     result=result_value,
                 )
 
-                self.logger.finished_executing_tool_call(
-                    tool_call_result=tool_call_result
-                )
+                self.logger.log_tool_call_finished(tool_call_result=tool_call_result)
 
                 results.append(tool_call_result)
 
@@ -199,16 +327,29 @@ class BaseAgent:
 
         return results
 
-    def execute_compute_heavy_tool_calls(
+    def _execute_compute_heavy_tool_calls(
         self, tool_calls: list[ToolCall]
     ) -> list[ToolCallResult]:
+        """
+        Executes compute-heavy tool calls in a ProcessPoolExecutor for parallelism.
 
+        Args:
+            tool_calls (list[ToolCall]): Tool calls marked as compute-heavy.
+
+        Returns:
+            list[ToolCallResult]: A list of results from compute-heavy executions.
+
+        Raises:
+            SkyAgentDetrimentalError: If a tool call fails or a tool is not found.
+        """
         results = []
 
         if not tool_calls:
             return results
 
-        with self.process_executor as executor:
+        with ProcessPoolExecutor(
+            max_workers=self.num_processes if self.parallelize else 1
+        ) as executor:
 
             futures = {}
             for tool_call in tool_calls:
@@ -227,7 +368,7 @@ class BaseAgent:
                             self.name} tool definitions.",
                     )
 
-                parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
+                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
 
                 if tool_wrapper.is_async:
                     futures[
@@ -255,7 +396,7 @@ class BaseAgent:
                         result=result_value,
                     )
 
-                    self.logger.finished_executing_tool_call(
+                    self.logger.log_tool_call_finished(
                         tool_call_result=tool_call_result
                     )
 
@@ -267,9 +408,21 @@ class BaseAgent:
 
         return results
 
-    def execute_async_tool_calls(
+    def _execute_async_tool_calls(
         self, tool_calls: list[ToolCall]
     ) -> list[ToolCallResult]:
+        """
+        Executes asynchronous tool calls using an event loop.
+
+        Args:
+            tool_calls (list[ToolCall]): Tool calls requiring async execution.
+
+        Returns:
+            list[ToolCallResult]: A list of results from async tool execution.
+
+        Raises:
+            SkyAgentDetrimentalError: If a tool call fails or a tool is not found.
+        """
         results = []
         if not tool_calls:
             return results
@@ -291,7 +444,7 @@ class BaseAgent:
                     tool_call, is_async=True, is_compute_heavy=False
                 )
 
-                parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
+                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
                 tasks.append(
                     loop.create_task(tool_wrapper.tool_function(**parsed_arguments))
                 )
@@ -314,7 +467,7 @@ class BaseAgent:
                     result=result_value_or_exc,
                 )
 
-                self.logger.finished_executing_tool_call(result)
+                self.logger.log_tool_call_finished(result)
 
                 results.append(result)
         else:
@@ -331,7 +484,7 @@ class BaseAgent:
                     tool_call, is_async=True, is_compute_heavy=False
                 )
 
-                parsed_arguments = self.parse_tool_call_arguments(tool_call=tool_call)
+                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
                 try:
                     result = loop.run_until_complete(
                         tool_wrapper.tool_function(**parsed_arguments)
@@ -343,7 +496,7 @@ class BaseAgent:
                         result=result,
                     )
 
-                    self.logger.finished_executing_tool_call(result)
+                    self.logger.log_tool_call_finished(result)
 
                     results.append(result)
                 except Exception as e:

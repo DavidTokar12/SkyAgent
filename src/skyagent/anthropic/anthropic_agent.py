@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from skyagent.anthropic.anthropic_api_adapter import AnthropicApiAdapter
 from skyagent.base.agent import BaseAgent
-from skyagent.open_ai.open_ai_api_adapter import OpenAiApiAdapter
 
 
-class OpenAIAgent(BaseAgent):
+class AnthropicAgent(BaseAgent):
 
     def _initialize_client(self):
-        self.client = OpenAiApiAdapter(
+        self.client = AnthropicApiAdapter(
             model=self.model,
             token=self.token,
             temperature=self.temperature,

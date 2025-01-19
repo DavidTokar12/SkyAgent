@@ -6,7 +6,7 @@ from skyagent.open_ai.open_ai_agent import OpenAIAgent
 from skyagent.open_ai.open_ai_tool import OpenAiTool
 
 
-load_dotenv("/workspaces/SkyAgent/.env")
+load_dotenv("/workspaces/SkyAgent/.env") # Load Anthropic or OpenAI tokens.
 
 
 def evaluate_expression(expression: str) -> float:
@@ -24,13 +24,12 @@ agent = OpenAIAgent(
     model="gpt-4o",
     system_prompt="Your are a precise math problem solver.",
     tools=[tool],
+    enable_live_display=True,
 )
 
-result = agent.call(
+result = agent.call_agent(
     query="""
 A company produces 8,757 gadgets per month. Each gadget costs $237 to manufacture. The company distributes the gadgets to 15 stores equally each month.
 How much does each store receive in product value (in dollars) every month?
 """
 )
-
-print(result)
