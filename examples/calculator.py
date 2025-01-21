@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dotenv import load_dotenv
 
+# NOTE: You can use the Anthropic agent instead of the OpenAi agent by importing the Anthropic classes.
 from skyagent.open_ai.open_ai_agent import OpenAIAgent
 from skyagent.open_ai.open_ai_tool import OpenAiTool
 
 
-load_dotenv("/workspaces/SkyAgent/.env") # Load Anthropic or OpenAI tokens.
+load_dotenv("/workspaces/SkyAgent/.env")  # Load Anthropic or OpenAI tokens.
 
 
 def evaluate_expression(expression: str) -> float:
@@ -24,7 +25,7 @@ agent = OpenAIAgent(
     model="gpt-4o",
     system_prompt="Your are a precise math problem solver.",
     tools=[tool],
-    enable_live_display=True,
+    enable_live_display=False,
 )
 
 result = agent.call_agent(
