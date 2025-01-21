@@ -34,9 +34,3 @@ class EnvironmentAdapter:
     def __del__(self):
         if self.log_file:
             self.log_file.close()
-
-
-# adapter = UnixShellAdapter(
-    # log_file_path="/workspaces/SkyAgent/src/skyagent/base/xd.log")
-
-# print(adapter.interact("ls"))

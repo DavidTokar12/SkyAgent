@@ -11,9 +11,6 @@
                 "charliermarsh.ruff",
                 "ms-python.black-formatter",
                 "streetsidesoftware.code-spell-checker",
-                "ms-azuretools.vscode-docker",
-                "svelte.svelte-vscode",
-                "redhat.vscode-xml",
                 "yzhang.markdown-all-in-one",
                 "GitHub.copilot"
             ],
