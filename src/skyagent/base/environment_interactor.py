@@ -28,8 +28,8 @@ class EnvironmentAdapter:
             else None
         )
 
-    def interact(self, environment_input):
-        raise NotImplementedError("'interact' method must be implemented")
+    def get_tool_functions(self) -> list[callable]:
+        raise NotImplementedError("'get_tool_functions' method must be implemented")
 
     def __del__(self):
         if self.log_file:
