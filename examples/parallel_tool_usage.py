@@ -6,7 +6,6 @@ import httpx
 
 from dotenv import load_dotenv
 
-# NOTE: You can use the OpenAI agent instead of the Anthropic agent by importing the OpenAI classes.
 from skyagent.anthropic.anthropic_agent import AnthropicAgent
 from skyagent.anthropic.anthropic_tool import AnthropicTool
 
@@ -44,23 +43,21 @@ fibonacci_tool = AnthropicTool(
     tool_function=get_nth_fibonacci_number,
     is_compute_heavy=True,  # Marks as heavy for parallel/offloading
 )
-random_joke_tool = AnthropicTool(tool_function=get_random_joke)
+random_joke_tool = AnthropicTool(
+    tool_function=get_random_joke
+)  # Automatically handles async functions
 
 agent = AnthropicAgent(
     name="Assistant",
     model="claude-3-5-sonnet-latest",
     system_prompt="You are a helpful assistant...",
     tools=[fibonacci_tool, random_joke_tool],
-    parallelize=False,
-    # parallelize=True,
-    # enable_live_display=False,
+    parallelize=True,
+    # parallelize=False,
     enable_live_display=True,
-    # log_file_path = "..."
-    # use a log file if you are using live display
+    log_file_path="./parallel_tool_usage.log",
 )
 
 result = agent.call_agent(
     query="Give me 3 truly random jokes, and the 31st, 28th, and 19th Fibonacci numbers."
 )
-
-# print(result)

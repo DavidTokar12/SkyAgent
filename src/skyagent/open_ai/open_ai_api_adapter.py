@@ -82,14 +82,23 @@ class OpenAiApiAdapter(LlmApiAdapter):
                     # we keep incoming tool calls
                     messages.append(message)
 
-            response: ChatCompletion = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=messages,
-                tools=[tool.to_dict() for tool in tools],
-                response_format=response_format,
-                timeout=self.timeout,
-                temperature=self.temperature,
-            )
+            if response_format is None:
+                response: ChatCompletion = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=[tool.to_dict() for tool in tools],
+                    timeout=self.timeout,
+                    temperature=self.temperature,
+                )
+            else:
+                response: ChatCompletion = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=messages,
+                    tools=[tool.to_dict() for tool in tools],
+                    response_format=response_format,
+                    timeout=self.timeout,
+                    temperature=self.temperature,
+                )
         except Exception as e:
             raise SkyAgentDetrimentalError(f"Chat completion failed: '{e}'")
 

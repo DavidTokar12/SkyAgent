@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from pydantic import Field
 
 from skyagent.anthropic.anthropic_agent import AnthropicAgent
 from skyagent.anthropic.anthropic_tool import AnthropicTool
@@ -20,33 +21,47 @@ def evaluate_expression(expression: str) -> float:
     return eval(expression)
 
 
+tool = OpenAiTool(tool_function=evaluate_expression)
+
+
+# You can define a response format for all models.
 class CalculationResponse(BaseModel):
-    chain_of_thought: str
+    chain_of_thought: str = Field(
+        description="The chain of thought that led to the final result."
+    )
     final_result: float
     your_favorite_number: str
 
 
-# tool = OpenAiTool(tool_function=evaluate_expression)
-tool = AnthropicTool(tool_function=evaluate_expression)
+system_prompt = """
+Your are a precise math problem solver. 
+To ensure precision, use the math tools at your disposal.
+"""
 
-# agent = OpenAIAgent(
+# agent = AnthropicAgent(
 #     name="Calculator",
-#     model="gpt-4o",
-#     system_prompt="Your are a precise math problem solver.",
+#     model="claude-3-5-sonnet-latest",
+#     system_prompt=system_prompt,
 #     tools=[tool],
+#     log_file_path="./basic_example.log",
 #     enable_live_display=False,
 # )
-agent = AnthropicAgent(
+agent = OpenAIAgent(
     name="Calculator",
-    model="claude-3-5-sonnet-latest",
-    system_prompt="Your are a precise math problem solver.",
+    model="gpt-4o",
+    system_prompt=system_prompt,
     tools=[tool],
+    log_file_path="./basic_example.log",
     enable_live_display=True,
 )
 
+
 result = agent.call_agent(
     query="""
-A company produces 8,757 gadgets per month. Each gadget costs $237 to manufacture. The company distributes the gadgets to 15 stores equally each month.
+- A company produces 8,757 gadgets per month. 
+- Each gadget costs $237 to manufacture. 
+- The company distributes the gadgets to 15 stores equally each month.
+
 How much does each store receive in product value (in dollars) every month?
 """,
     response_format=CalculationResponse,
