@@ -20,6 +20,8 @@ from skyagent.base.utils import get_or_create_event_loop
 
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from skyagent.base.chat_message import BaseChatMessage
     from skyagent.base.llm_api_adapter import CompletionResponse
     from skyagent.base.tools import TOOL_ARG_TYPES
@@ -40,7 +42,7 @@ class BaseAgent:
         name: str,
         model: str,
         system_prompt: str | Path,
-        tools: list[BaseTool] | None,
+        tools: list[BaseTool] | None = None,
         max_turns: int = 10,
         token: str | None = None,
         parallelize: bool = True,
@@ -129,27 +131,35 @@ class BaseAgent:
             "Client initialization must be implemented by agent child classes."
         )
 
-    def call_agent(self, query: str) -> CompletionResponse:
+    def call_agent(
+        self, query: str, response_format: BaseModel | None = None
+    ) -> CompletionResponse:
         """
         Entry point to invoke the agent with a given query.
 
         Args:
             query (str): The user-provided query or request.
+            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
 
         Returns:
             CompletionResponse: The final LLM response, if successfully completed.
         """
         if self.enable_live_display:
             with self.logger.live_dashboard_context():
-                return self._execute_agent_call(query=query)
-        return self._execute_agent_call(query=query)
+                return self._execute_agent_call(
+                    query=query, response_format=response_format
+                )
+        return self._execute_agent_call(query=query, response_format=response_format)
 
-    def _execute_agent_call(self, query: str) -> CompletionResponse:
+    def _execute_agent_call(
+        self, query: str, response_format: BaseModel | None = None
+    ) -> CompletionResponse:
         """
         Handles the main call logic, orchestrating the conversation loop and tool usage.
 
         Args:
             query (str): The user or external request to process.
+            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
 
         Returns:
             CompletionResponse: The final LLM completion, if available.
@@ -171,7 +181,9 @@ class BaseAgent:
                 self.logger.log_chat_loop_started(turn=current_turn)
 
                 completion = self.client.get_completion(
-                    chat_history=self.chat_history, tools=self.tools_array
+                    chat_history=self.chat_history,
+                    tools=self.tools_array,
+                    response_format=response_format,
                 )
 
                 if completion.tool_calls:

@@ -22,6 +22,7 @@ class OpenAiTool(BaseTool):
             "function": {
                 "name": self.name,
                 "description": self.description,
+                "strict": True,
                 "parameters": {
                     "type": "object",
                     "properties": properties_dict,

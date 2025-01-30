@@ -38,7 +38,12 @@ class OpenAiApiAdapter(LlmApiAdapter):
         temperature: float = 0.0,
         timeout: int = 3,
     ):
-        super().__init__(model, token, temperature, timeout)
+        super().__init__(
+            model=model,
+            token=token,
+            temperature=temperature,
+            timeout=timeout,
+        )
 
         self.client = OpenAI(api_key=self.token, timeout=self.timeout)
 
@@ -77,7 +82,7 @@ class OpenAiApiAdapter(LlmApiAdapter):
                     # we keep incoming tool calls
                     messages.append(message)
 
-            response: ChatCompletion = self.client.chat.completions.create(
+            response: ChatCompletion = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=messages,
                 tools=[tool.to_dict() for tool in tools],

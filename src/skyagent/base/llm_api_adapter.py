@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -20,7 +21,7 @@ class LlmUsage(BaseModel):
 
 
 class CompletionResponse(BaseModel):
-    content: str | None
+    content: str | BaseModel | None
     tool_calls: list[ToolCall] | None
     usage: LlmUsage
 
@@ -30,7 +31,7 @@ class LlmApiAdapter:
     def __init__(
         self,
         model: str,
-        token: str | None,
+        token: str | None = None,
         temperature: float = 0.0,
         timeout: int = 3,
     ):

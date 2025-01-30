@@ -22,7 +22,7 @@ class BaseChatMessage(BaseModel):
         max_length = 124
         for key, value in data.items():
             if isinstance(value, str) and len(value) > max_length:
-                data[key] = value[:max_length] + "... [truncated]"
+                data[key] = value[:max_length] + "..."
 
         fields_str = ", ".join(f"{k}={v!r}" for k, v in data.items())
         return f"{self.__class__.__name__}({fields_str})"

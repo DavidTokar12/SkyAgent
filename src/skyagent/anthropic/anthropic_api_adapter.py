@@ -18,6 +18,7 @@ from skyagent.base.llm_api_adapter import LlmApiAdapter
 from skyagent.base.llm_api_adapter import LlmUsage
 from skyagent.base.tools import ToolCall
 from skyagent.base.tools import ToolCallResult
+from skyagent.utils import model_to_string
 
 
 if TYPE_CHECKING:
@@ -97,12 +98,17 @@ class AnthropicApiAdapter(LlmApiAdapter):
                     # Handle incoming tool use messages
                     messages.append(item)
 
-            system_message = messages[0]
+            system_message = messages[0]["content"]
+
+            if response_format is not None:
+                system_message += f"\n Your output must be a valid JSON object with the following schema:\n {
+                    model_to_string(response_format)}"
+
             messages = messages[1:]
 
             response: Message = self.client.messages.create(
                 model=self.model,
-                system=system_message["content"],
+                system=system_message,
                 messages=messages,
                 max_tokens=self.max_token,
                 tools=[tool.to_dict() for tool in tools],
@@ -150,8 +156,19 @@ class AnthropicApiAdapter(LlmApiAdapter):
             )
 
         elif finish_reason == "end_turn":
+
+            final_response = response.content[0].text
+
+            if response_format is not None:
+                try:
+                    response_format.model_validate_json(final_response)
+                except Exception as e:
+                    raise SkyAgentDetrimentalError(
+                        f"Failed to validate response format: {e}"
+                    )
+
             return CompletionResponse(
-                content=response.content[0].text,
+                content=final_response,
                 tool_calls=None,
                 usage=usage,
             )

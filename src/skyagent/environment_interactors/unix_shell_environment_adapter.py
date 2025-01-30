@@ -180,7 +180,9 @@ class UnixShellAdapter(EnvironmentAdapter):
 
         self.command_running = False
 
-        _ = self.run_command_in_shell("pwd")  # for some reason the first command output is not parsed correctly after a signal is sent
+        _ = self.run_command_in_shell(
+            "pwd"
+        )  # for some reason the first command output is not parsed correctly after a signal is sent
 
         return UnixShellInteractionResult(
             output=output,

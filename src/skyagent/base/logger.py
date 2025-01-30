@@ -74,7 +74,7 @@ class AgentLogger:
         self._agent_tools = agent_tools
         self._agent_chat_history = agent_chat_history
         self._agent_chat_loop_index = 0
-
+        self._agent_final_result = None
         self._pending_tool_calls = 0
         self._executed_tool_calls = 0
         self._pending_tool_calls_dict = {}
@@ -223,6 +223,7 @@ class AgentLogger:
         )
 
         self._status = AgentStatus.FINISHED
+        self._agent_final_result = completion.content
         self._completion_tokens_used += completion.usage.completion_tokens
         self._prompt_tokens_used += completion.usage.prompt_tokens
         self.update_live_dashboard()
@@ -306,15 +307,7 @@ class AgentLogger:
         )
         # Don't update live dashboard, so the last thing on the CLI is the error message.
 
-    def render_live_dashboard(self) -> Table:
-        """
-        Builds and returns a Rich Table containing the current agent status,
-        recent chat history, and any pending tool calls.
-
-        Returns:
-            Table: A Rich Table object suitable for live display.
-        """
-
+    def render_live_dashboard(self):
         if not self._console:
             self._console = Console()
 
@@ -322,10 +315,8 @@ class AgentLogger:
 
         table.add_column("Status", justify="left")
         table.add_column("ID", justify="left")
-
         table.add_column("Pending Tool Calls", justify="center")
         table.add_column("Executed Tool Calls", justify="center")
-
         table.add_column("Prompt Tokens", justify="center")
         table.add_column("Completion Tokens", justify="center")
 
@@ -338,7 +329,7 @@ class AgentLogger:
             str(self._completion_tokens_used),
         )
 
-        chat_history_str = "\n".join(str(msg) for msg in self._agent_chat_history[-3:])
+        chat_history_str = "\n".join(str(msg) for msg in self._agent_chat_history[-4:])
         chat_history_panel = Panel(
             chat_history_str,
             title="Recent Chat History (Last 3)",
@@ -349,7 +340,6 @@ class AgentLogger:
         pending_calls_str = "\n".join(
             str(tool_data) for tool_data in self._pending_tool_calls_dict.values()
         )
-
         pending_calls_panel = Panel(
             pending_calls_str,
             title="Executing Tool Calls",
@@ -357,4 +347,15 @@ class AgentLogger:
             border_style="magenta",
         )
 
-        return Group(table, chat_history_panel, pending_calls_panel)
+        renderables = [table, chat_history_panel, pending_calls_panel]
+
+        if self._agent_final_result is not None:
+            final_result_panel = Panel(
+                f"[bold green]{self._agent_final_result}[/bold green]",
+                title="[green]Final Result[/green]",
+                expand=True,
+                border_style="green",
+            )
+            renderables.append(final_result_panel)
+
+        return Group(*renderables)
