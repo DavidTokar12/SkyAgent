@@ -12,7 +12,8 @@
                 "ms-python.black-formatter",
                 "streetsidesoftware.code-spell-checker",
                 "yzhang.markdown-all-in-one",
-                "GitHub.copilot"
+                "GitHub.copilot",
+                "GitHub.vscode-github-actions"
             ],
             "settings": {
                 "python.locator": "js"
