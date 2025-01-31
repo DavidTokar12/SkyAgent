@@ -31,8 +31,20 @@ jobs:
         poetry install --no-interaction --no-root
       shell: bash
 
-    - name: Run Black formatter
+    - name: Check formatting
       run: |
         export PATH="/github/home/.local/bin:$PATH"
         poetry run black . --check
+      shell: bash
+
+    - name: Run linter
+      run: |
+        export PATH="/github/home/.local/bin:$PATH"
+        poetry run ruff check .
+      shell: bash
+
+    - name: Run tests
+      run: |
+        export PATH="/github/home/.local/bin:$PATH"
+        poetry run pytest .
       shell: bash

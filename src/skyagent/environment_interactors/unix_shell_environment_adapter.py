@@ -159,7 +159,7 @@ class UnixShellAdapter(EnvironmentAdapter):
                 state=state,
             ).model_dump()
 
-        except Exception as e:
+        except Exception:
             return UnixShellInteractionResult(
                 output=self._format_command_output(self.shell.before),
                 state=UnixShellInteractionState.INTERRUPTED.value,

@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic import Field
 
-from skyagent.anthropic.anthropic_agent import AnthropicAgent
-from skyagent.anthropic.anthropic_tool import AnthropicTool
 from skyagent.open_ai.open_ai_agent import OpenAIAgent
 from skyagent.open_ai.open_ai_tool import OpenAiTool
 
