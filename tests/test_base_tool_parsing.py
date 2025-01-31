@@ -23,7 +23,10 @@ def test_basic_tool_parsing():
     tool = BaseTool(tool_function=sample_func)
 
     assert tool.name == "sample_func"
-    assert tool.description == "Test function with basic types. This is a detailed description of the function."
+    assert (
+        tool.description
+        == "Test function with basic types. This is a detailed description of the function."
+    )
     assert len(tool.parameters) == 3
     assert tool.required_properties == ["a", "b", "c"]
     assert not tool.is_async
@@ -48,7 +51,7 @@ def test_tool_with_optional_parameters():
     assert {p.name: p.type for p in tool.parameters} == {
         "a": "integer",
         "b": "string",
-        "c": "number"
+        "c": "number",
     }
 
 
@@ -68,7 +71,7 @@ def test_tool_with_complex_types():
     assert {p.name: p.type for p in tool.parameters} == {
         "data": "object",
         "items": "array",
-        "flag": "boolean"
+        "flag": "boolean",
     }
 
 
