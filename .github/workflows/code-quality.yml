@@ -30,15 +30,22 @@ jobs:
         export PATH="/github/home/.local/bin:$PATH"
         poetry install --no-interaction
       shell: bash
-
-    - name: Run Black formatter
-      run: |
-        export PATH="/github/home/.local/bin:$PATH"
-        poetry run black . --check
-      shell: bash
-
+    
     - name: Run tests
       run: |
         export PATH="/github/home/.local/bin:$PATH"
         PYTHONPATH=$PYTHONPATH:$(pwd)/src poetry run pytest .
       shell: bash
+    
+    - name: Run linter
+      run: |
+        export PATH="/github/home/.local/bin:$PATH"
+        poetry run ruff check .
+      shell: bash
+
+    - name: Check formatting
+      run: |
+        export PATH="/github/home/.local/bin:$PATH"
+        poetry run black . --check
+      shell: bash
+
