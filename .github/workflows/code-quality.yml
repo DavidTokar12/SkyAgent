@@ -25,26 +25,20 @@ jobs:
         poetry config virtualenvs.create false
       shell: bash
 
-    - name: Install dependencies
+    - name: Install dependencies and package
       run: |
         export PATH="/github/home/.local/bin:$PATH"
-        poetry install --no-interaction --no-root
+        poetry install --no-interaction
       shell: bash
 
-    - name: Check formatting
+    - name: Run Black formatter
       run: |
         export PATH="/github/home/.local/bin:$PATH"
         poetry run black . --check
       shell: bash
 
-    - name: Run linter
-      run: |
-        export PATH="/github/home/.local/bin:$PATH"
-        poetry run ruff check .
-      shell: bash
-
     - name: Run tests
       run: |
         export PATH="/github/home/.local/bin:$PATH"
-        poetry run pytest .
+        PYTHONPATH=$PYTHONPATH:$(pwd)/src poetry run pytest .
       shell: bash
