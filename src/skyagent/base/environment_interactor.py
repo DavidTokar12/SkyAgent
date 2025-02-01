@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -11,8 +10,8 @@ if TYPE_CHECKING:
 
 
 class InteractionHistory(BaseModel):
-    input_to_environment: Any
-    output_from_environment: Any
+    input_to_environment: dict
+    output_from_environment: dict
 
 
 class EnvironmentAdapter:
@@ -29,8 +28,12 @@ class EnvironmentAdapter:
         )
 
     def get_tool_functions(self) -> list[callable]:
-        raise NotImplementedError("'get_tool_functions' method must be implemented")
+        raise NotImplementedError(
+            "'get_tool_functions' method must be implemented")
 
-    def __del__(self):
+    def __enter__(self) -> EnvironmentAdapter:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         if self.log_file:
             self.log_file.close()

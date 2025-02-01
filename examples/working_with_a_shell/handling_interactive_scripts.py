@@ -12,7 +12,7 @@ from skyagent.environment_interactors.unix_shell_environment_adapter import (
 load_dotenv("/workspaces/SkyAgent/.env")
 
 shell_adapter = UnixShellAdapter(
-    base_dir="/", log_file_path="/workspaces/SkyAgent/examples/unix_shell.log"
+    base_dir="/", log_file_path="/workspaces/SkyAgent/examples/working_with_a_shell/handling_interactive_scripts.log"
 )
 
 tools = [
@@ -28,19 +28,21 @@ You are an independent senior software engineer with access to a unix shell.
     - Ensuring that your commands worked is your responsibility. Use additional commands to verify that your commands worked, and had their required effect.
 """
 
-agent = AnthropicAgent(
-    name="Unix Shell",
-    model="claude-3-5-sonnet-latest",
-    system_prompt=system_prompt,
-    tools=tools,
-    enable_live_display=True,
-    max_turns=50,
-)
 
-result = agent.call_agent(
-    query="""
-There is a a bash script somewhere int the /workspaces/SkyAgent/examples directory that prints a secret message when you run it. 
-Your job is to tell me this secret message, and how it changed your world view.
-Please give a short summary of your adventure executing this task.
-"""
-)
+with shell_adapter:
+    agent = AnthropicAgent(
+        name="Unix Shell",
+        model="claude-3-5-sonnet-latest",
+        system_prompt=system_prompt,
+        tools=tools,
+        enable_live_display=True,
+        max_turns=50,
+    )
+
+    result = agent.call_agent(
+        query="""
+    There is a a bash script somewhere int the /workspaces/SkyAgent/examples directory that prints a secret message when you run it. 
+    Your job is to tell me this secret message, and how it changed your world view.
+    Please give a short summary of your adventure executing this task.
+    """
+    )
