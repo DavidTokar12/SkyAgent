@@ -86,7 +86,7 @@ class OpenAiApiAdapter(LlmApiAdapter):
                 response: ChatCompletion = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=[tool.to_dict() for tool in tools],
+                    tools=[tool.to_dict() for tool in tools] if tools else None,
                     timeout=self.timeout,
                     temperature=self.temperature,
                 )

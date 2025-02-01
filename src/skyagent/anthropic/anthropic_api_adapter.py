@@ -51,14 +51,16 @@ class AnthropicApiAdapter(LlmApiAdapter):
     ) -> CompletionResponse:
 
         if len(chat_history) == 0:
-            raise SkyAgentDetrimentalError("message_history cannot be an empty array!")
+            raise SkyAgentDetrimentalError(
+                "message_history cannot be an empty array!")
 
         try:
             messages = []
 
             grouped_history = []
             for is_tool_call, group in groupby(
-                chat_history, key=lambda msg: isinstance(msg, ToolCallOutgoingMessage)
+                chat_history, key=lambda msg: isinstance(
+                    msg, ToolCallOutgoingMessage)
             ):
                 if is_tool_call:
                     # Group tool call outgoing messages
@@ -111,7 +113,7 @@ class AnthropicApiAdapter(LlmApiAdapter):
                 system=system_message,
                 messages=messages,
                 max_tokens=self.max_token,
-                tools=[tool.to_dict() for tool in tools],
+                tools=[tool.to_dict() for tool in tools] if tools else [],
                 timeout=self.timeout,
                 temperature=self.temperature,
             )
@@ -122,7 +124,8 @@ class AnthropicApiAdapter(LlmApiAdapter):
         finish_reason = response.stop_reason
 
         if finish_reason == "max_tokens":
-            raise SkyAgentContextWindowSaturatedError("Context window exceeded!")
+            raise SkyAgentContextWindowSaturatedError(
+                "Context window exceeded!")
 
         usage = LlmUsage(
             completion_tokens=response.usage.output_tokens,
@@ -131,7 +134,8 @@ class AnthropicApiAdapter(LlmApiAdapter):
 
         if finish_reason == "tool_use":
 
-            chat_history.append({"role": "assistant", "content": response.content})
+            chat_history.append(
+                {"role": "assistant", "content": response.content})
 
             parsed_tool_calls = []
 
