@@ -12,7 +12,8 @@ from skyagent.environment_interactors.unix_shell_environment_adapter import (
 load_dotenv("/workspaces/SkyAgent/.env")
 
 shell_adapter = UnixShellAdapter(
-    base_dir="/", log_file_path="/workspaces/SkyAgent/examples/working_with_a_shell/unix_shell_usage.log"
+    base_dir="/",
+    log_file_path="/workspaces/SkyAgent/examples/working_with_a_shell/unix_shell_usage.log",
 )
 
 tools = [
@@ -30,7 +31,7 @@ You are an independent senior software engineer with access to a unix shell.
 
 
 with shell_adapter:
-    
+
     agent = AnthropicAgent(
         name="Unix Shell",
         model="claude-3-5-sonnet-latest",

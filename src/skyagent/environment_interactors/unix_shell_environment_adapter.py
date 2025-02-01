@@ -48,8 +48,7 @@ class UnixShellAdapter(EnvironmentAdapter):
         self.command_running = False
 
         if not self.base_dir.is_dir():
-            raise SkyAgentDetrimentalError(
-                f"Directory {self.base_dir} does not exist.")
+            raise SkyAgentDetrimentalError(f"Directory {self.base_dir} does not exist.")
 
         self.shell = None
 
@@ -58,7 +57,7 @@ class UnixShellAdapter(EnvironmentAdapter):
             self.run_command_in_shell,
             self.get_update_of_shell_output,
             self.send_control_signal,
-            self.write_input_to_shell
+            self.write_input_to_shell,
         ]
 
     def __enter__(self) -> UnixShellAdapter:
@@ -96,7 +95,7 @@ class UnixShellAdapter(EnvironmentAdapter):
     def run_command_in_shell(self, command_to_run: str) -> dict:
         """
         Use this tool to run a command in a Unix shell. You have access to a single, persistent shell instance.
-        
+
         The tool will write your command as an input to the shell with the pexpect sendline method, which appends os.linesep to your input automatically.
 
         **Caution: You must only try to run a single shell command with a single call to this tool. If you start to chain commands, the tool might not work as expected.**
@@ -124,8 +123,7 @@ class UnixShellAdapter(EnvironmentAdapter):
 
         try:
             self.shell.expect_exact(self.prompt, timeout=3)
-            output = self._format_command_output(
-                self.shell.before, append_prompt=True)
+            output = self._format_command_output(self.shell.before, append_prompt=True)
             state = UnixShellInteractionState.FINISHED.value
             self.command_running = False
         except pexpect.TIMEOUT:
@@ -139,8 +137,8 @@ class UnixShellAdapter(EnvironmentAdapter):
 
     def write_input_to_shell(self, input_to_write: str) -> dict:
         """
-        Use this tool to write input to the shell. This tool is useful for interacting with running commands that require user input. 
-        
+        Use this tool to write input to the shell. This tool is useful for interacting with running commands that require user input.
+
         The tool will write your input to the shell with the pexpect sendline method, which appends os.linesep to your input automatically.
 
         **CAUTION: This tool is not suitable for running commands. Instead, use the 'run_command_in_shell' tool with with your desired command.**
@@ -148,7 +146,7 @@ class UnixShellAdapter(EnvironmentAdapter):
         The tool returns the output of the shell after input has been written to it, and a state value.
         The execution state can be:
         *   **finished:** Your input was processed, and no further input is required. The previous command is no longer running, and you can execute a new command.
-        *   **interrupted:** Your input was processed, but the command is still running and producing output. You must continue monitoring the command by calling the 'get_update_of_shell_output' tool, or using the 'send_control_signal'(to cancel it for example), or writing additional input with this('write_input_to_shell') tool. 
+        *   **interrupted:** Your input was processed, but the command is still running and producing output. You must continue monitoring the command by calling the 'get_update_of_shell_output' tool, or using the 'send_control_signal'(to cancel it for example), or writing additional input with this('write_input_to_shell') tool.
 
         :param input_to_write: The input string to write to the shell.
         """
@@ -157,8 +155,7 @@ class UnixShellAdapter(EnvironmentAdapter):
 
         try:
             self.shell.expect_exact(self.prompt, timeout=1)
-            output = self._format_command_output(
-                self.shell.before, append_prompt=True)
+            output = self._format_command_output(self.shell.before, append_prompt=True)
             state = UnixShellInteractionState.FINISHED.value
             self.command_running = False
         except pexpect.TIMEOUT:
@@ -184,7 +181,8 @@ class UnixShellAdapter(EnvironmentAdapter):
         if not self.command_running:
             return UnixShellInteractionResult(
                 output=self._format_command_output(
-                    self.shell.before, append_prompt=True),
+                    self.shell.before, append_prompt=True
+                ),
                 state=UnixShellInteractionState.FINISHED.value,
             ).model_dump()
 
@@ -266,8 +264,7 @@ class UnixShellAdapter(EnvironmentAdapter):
         """
         try:
             self.shell.expect(self.prompt, timeout=3)
-            output = self._format_command_output(
-                self.shell.before, append_prompt=True)
+            output = self._format_command_output(self.shell.before, append_prompt=True)
         except pexpect.TIMEOUT:
             output = self._format_command_output(self.shell.before)
         return output

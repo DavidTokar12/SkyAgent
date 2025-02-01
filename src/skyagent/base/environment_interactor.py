@@ -28,8 +28,7 @@ class EnvironmentAdapter:
         )
 
     def get_tool_functions(self) -> list[callable]:
-        raise NotImplementedError(
-            "'get_tool_functions' method must be implemented")
+        raise NotImplementedError("'get_tool_functions' method must be implemented")
 
     def __enter__(self) -> EnvironmentAdapter:
         return self

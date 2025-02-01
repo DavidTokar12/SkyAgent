@@ -12,7 +12,8 @@ from skyagent.environment_interactors.unix_shell_environment_adapter import (
 load_dotenv("/workspaces/SkyAgent/.env")
 
 shell_adapter = UnixShellAdapter(
-    base_dir="/", log_file_path="/workspaces/SkyAgent/examples/working_with_a_shell/handling_interactive_scripts.log"
+    base_dir="/",
+    log_file_path="/workspaces/SkyAgent/examples/working_with_a_shell/handling_interactive_scripts.log",
 )
 
 tools = [
