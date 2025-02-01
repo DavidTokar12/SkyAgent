@@ -20,7 +20,10 @@ def remove_sensitive_response_headers(response):
     """Remove all response headers except 'Content-Encoding' and 'Content-Type'."""
     allowed_headers = {"Content-Encoding", "Content-Type"}
     response["headers"] = {
-        key: value for key, value in response["headers"].items() if key in allowed_headers}
+        key: value
+        for key, value in response["headers"].items()
+        if key in allowed_headers
+    }
     return response
 
 
@@ -33,6 +36,15 @@ my_vcr = vcr.VCR(
 )
 
 
+@pytest.fixture(autouse=True)
+def set_dummy_api_keys(monkeypatch):
+    # If we're running on GitHub Actions, set dummy API keys.
+    # GitHub Actions usually sets the environment variable GITHUB_ACTIONS to "true".
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy_openai_token")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy_anthropic_token")
+
+
 @pytest.fixture
 def vcr_fixture():
     return my_vcr
@@ -40,8 +52,7 @@ def vcr_fixture():
 
 @pytest.fixture(scope="session")
 def test_inputs():
-    test_inputs_path = os.path.join(
-        os.path.dirname(__file__), "test_inputs.json")
+    test_inputs_path = os.path.join(os.path.dirname(__file__), "test_inputs.json")
     with open(test_inputs_path) as f:
         return json.load(f)
 
