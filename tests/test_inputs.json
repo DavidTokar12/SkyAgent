@@ -1,0 +1,12 @@
+{
+    "base_input": {
+        "system_prompt": "You are a helpful assistant.",
+        "query": "Say: 'test 1, 2, 3'.",
+        "models": {
+            "open_ai": "gpt-4o",
+            "anthropic": "claude-3-5-sonnet-latest"
+        },
+        "tools": null,
+        "response_format": null
+    }
+}
