@@ -9,9 +9,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+class ShellInteractionInput(BaseModel):
+    type: str
+    content: str
+
+
+class ShellInteractionOutput(BaseModel):
+    type: str
+    content: str
+    state: str
+
+
 class InteractionHistory(BaseModel):
-    input_to_environment: dict
-    output_from_environment: dict
+    input_to_environment: ShellInteractionInput
+    output_from_environment: ShellInteractionOutput
 
 
 class EnvironmentAdapter:

@@ -15,3 +15,11 @@ def model_to_string(model: type[BaseModel]) -> str:
         return str(json_schema)
     except Exception as e:
         raise SkyAgentDetrimentalError(f"Failed to convert model to string: {e}")
+
+
+TEXT_CHARS = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7F})
+
+
+def is_binary_string(bytes: bytes) -> bool:
+    # based on https://github.com/file/file/blob/f2a6e7cb7db9b5fd86100403df6b2f830c7f22ba/src/encoding.c#L151-L228
+    return bool(bytes.translate(None, TEXT_CHARS))

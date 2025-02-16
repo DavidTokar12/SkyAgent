@@ -10,7 +10,17 @@ import pexpect
 from pydantic import BaseModel
 
 from skyagent.base.environment_interactor import EnvironmentAdapter
+from skyagent.base.environment_interactor import InteractionHistory
+from skyagent.base.environment_interactor import ShellInteractionInput
+from skyagent.base.environment_interactor import ShellInteractionOutput
 from skyagent.base.exceptions import SkyAgentDetrimentalError
+
+
+class InteractionType(Enum):
+    COMMAND = "command"
+    SIGNAL = "signal"
+    INPUT = "input"
+    OUTPUT_CHECK = "output_check"
 
 
 class UnixShellInteractionState(Enum):
@@ -112,13 +122,22 @@ class UnixShellAdapter(EnvironmentAdapter):
         """
 
         if self.command_running:
-            return UnixShellInteractionResult(
-                output="Cannot execute new command while previous command is still running. You must proceed with any of the 'get_update_of_shell_output', 'send_control_signal', or 'write_input_to_shell' tools.",
+
+            result = UnixShellInteractionResult(
+                output="Cannot execute new command while previous command is still running.",
                 state=UnixShellInteractionState.BUSY.value,
             ).model_dump()
 
-        self.command_running = True
+            self._record_interaction(
+                input_type=InteractionType.COMMAND.value,
+                input_content=command_to_run,
+                output_content=result["output"],
+                output_state=result["state"],
+            )
 
+            return result
+
+        self.command_running = True
         self.shell.sendline(command_to_run)
 
         try:
@@ -130,10 +149,16 @@ class UnixShellAdapter(EnvironmentAdapter):
             output = self._format_command_output(self.shell.before)
             state = UnixShellInteractionState.INTERRUPTED.value
 
-        return UnixShellInteractionResult(
-            output=output,
-            state=state,
-        ).model_dump()
+        result = UnixShellInteractionResult(output=output, state=state).model_dump()
+
+        self._record_interaction(
+            input_type=InteractionType.COMMAND.value,
+            input_content=command_to_run,
+            output_content=result["output"],
+            output_state=result["state"],
+        )
+
+        return result
 
     def write_input_to_shell(self, input_to_write: str) -> dict:
         """
@@ -162,10 +187,16 @@ class UnixShellAdapter(EnvironmentAdapter):
             output = self._format_command_output(self.shell.before)
             state = UnixShellInteractionState.INTERRUPTED.value
 
-        return UnixShellInteractionResult(
-            output=output,
-            state=state,
-        ).model_dump()
+        result = UnixShellInteractionResult(output=output, state=state).model_dump()
+
+        self._record_interaction(
+            input_type=InteractionType.INPUT.value,
+            input_content=input_to_write,
+            output_content=result["output"],
+            output_state=result["state"],
+        )
+
+        return result
 
     def get_update_of_shell_output(self) -> dict:
         """
@@ -179,12 +210,20 @@ class UnixShellAdapter(EnvironmentAdapter):
         """
 
         if not self.command_running:
-            return UnixShellInteractionResult(
+            result = UnixShellInteractionResult(
                 output=self._format_command_output(
                     self.shell.before, append_prompt=True
                 ),
                 state=UnixShellInteractionState.FINISHED.value,
             ).model_dump()
+
+            self._record_interaction(
+                input_type=InteractionType.OUTPUT_CHECK.value,
+                input_content="",  # No input content for output check
+                output_content=result["output"],
+                output_state=result["state"],
+            )
+            return result
 
         try:
             # Wait for the prompt for 1 second.
@@ -197,10 +236,16 @@ class UnixShellAdapter(EnvironmentAdapter):
             output = self._format_command_output(self.shell.before)
             state = UnixShellInteractionState.INTERRUPTED.value
 
-        return UnixShellInteractionResult(
-            output=output,
-            state=state,
-        ).model_dump()
+        result = UnixShellInteractionResult(output=output, state=state).model_dump()
+
+        self._record_interaction(
+            input_type=InteractionType.OUTPUT_CHECK.value,
+            input_content="",
+            output_content=result["output"],
+            output_state=result["state"],
+        )
+
+        return result
 
     def send_control_signal(self, signal: str) -> dict:
         """
@@ -224,10 +269,17 @@ class UnixShellAdapter(EnvironmentAdapter):
             "pwd"
         )  # for some reason the first command output is not parsed correctly after a signal is sent
 
-        return UnixShellInteractionResult(
-            output=output,
-            state=UnixShellInteractionState.FINISHED.value,
+        result = UnixShellInteractionResult(
+            output=output, state=UnixShellInteractionState.FINISHED.value
         ).model_dump()
+
+        self._record_interaction(
+            input_type=InteractionType.SIGNAL.value,
+            input_content=f"CTRL+{signal.upper()}",
+            output_content=result["output"],
+            output_state=result["state"],
+        )
+        return result
 
     def _run_basic_command(self, command: str) -> str:
         self.shell.sendline(command)
@@ -268,3 +320,23 @@ class UnixShellAdapter(EnvironmentAdapter):
         except pexpect.TIMEOUT:
             output = self._format_command_output(self.shell.before)
         return output
+
+    def _record_interaction(
+        self,
+        input_type: str,
+        input_content: str,
+        output_content: str,
+        output_state: str,
+    ) -> None:
+        """Helper method to record an interaction in the history"""
+        interaction = InteractionHistory(
+            input_to_environment=ShellInteractionInput(
+                type=input_type, content=input_content
+            ),
+            output_from_environment=ShellInteractionOutput(
+                type=input_type,  # Output type matches input type for consistency
+                content=output_content,
+                state=output_state,
+            ),
+        )
+        self.interaction_history.append(interaction)

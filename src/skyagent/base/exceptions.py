@@ -19,3 +19,15 @@ class SkyAgentContextWindowSaturatedError(SkyAgentError):
 
 class SkyAgentCopyrightError(SkyAgentError):
     """Exception meaning that the conversation included copyright material, thus could not be answered."""
+
+
+class SkyAgentUnsupportedFileTypeError(Exception):
+    """Exception raised when file type is not supported."""
+
+
+class SkyAgentValidationError(Exception):
+    """Base error for input validation issues"""
+
+
+class SkyAgentFileError(Exception):
+    """Base error for file operation issues"""
