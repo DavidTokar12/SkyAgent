@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from skyagent.base.tools import BaseTool
     from skyagent.base.tools import ToolCall
 
+
 def run_async_in_task(async_func, *args, **kwargs):
     """Wrapper to run an async function in a synchronous way."""
 
