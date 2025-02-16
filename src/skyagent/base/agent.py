@@ -14,7 +14,6 @@ from skyagent.base.chat_message import ChatMessageRole
 from skyagent.base.chat_message import SystemChatMessage
 from skyagent.base.chat_message import UserChatMessage
 from skyagent.base.exceptions import SkyAgentDetrimentalError
-from skyagent.base.llm_api_adapter import CompletionResponse  # noqa: TCH001
 from skyagent.base.logger import AgentLogger
 from skyagent.base.tools import ToolCallResult
 from skyagent.base.utils import get_or_create_event_loop
@@ -24,10 +23,10 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
     from skyagent.base.chat_message import BaseChatMessage
+    from skyagent.base.llm_api_adapter import CompletionResponse
     from skyagent.base.tools import TOOL_ARG_TYPES
     from skyagent.base.tools import BaseTool
     from skyagent.base.tools import ToolCall
-
 
 def run_async_in_task(async_func, *args, **kwargs):
     """Wrapper to run an async function in a synchronous way."""

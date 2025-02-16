@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from skyagent.base.tools import ToolCall  # noqa: TCH001
+
 
 if TYPE_CHECKING:
     from skyagent.base.chat_message import BaseChatMessage
     from skyagent.base.chat_message import ToolCallOutgoingMessage
     from skyagent.base.tools import BaseTool
-    from skyagent.base.tools import ToolCall
     from skyagent.base.tools import ToolCallResult
 
 
