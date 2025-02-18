@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 
+from dataclasses import asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +20,15 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class InputDirectoryReaderMetadata:
+    id: str
+    original_input_directory_path: str
+    split_text: bool
+    ignore_patterns: list[str]
+    relative_processed_directories: list[str]
 
 
 class InputDirectoryReader:
@@ -84,7 +96,6 @@ class InputDirectoryReader:
                     f"Output path exists but is not a directory: {base_dir}"
                 )
 
-            base_dir.mkdir(parents=False, exist_ok=False)
             return base_dir
 
         except Exception as e:
@@ -108,6 +119,8 @@ class InputDirectoryReader:
         Process all files in the directory recursively.
         Maintains original directory structure in output.
         """
+
+        self.output_directory_path.mkdir(parents=False, exist_ok=True)
 
         for input_file_path in self.input_directory_path.rglob("*"):
 
@@ -136,6 +149,8 @@ class InputDirectoryReader:
                 logger.error(f"Failed to process file {input_file_path}: {e!s}")
                 continue
 
+        self._save_metadata()
+
     def get_file_loader(self, file_path: str | Path) -> InputFileLoader:
         """Get file loader for a specific file."""
         path = Path(file_path).resolve()
@@ -144,3 +159,86 @@ class InputDirectoryReader:
             raise KeyError(f"No loader found for file: {path}")
 
         return self.file_loaders[path]
+
+    def _save_metadata(self) -> None:
+        """Save metadata about the processed directory to enable later loading."""
+        if not self.file_loaders:
+            raise SkyAgentValidationError("No files have been processed yet")
+
+        metadata = InputDirectoryReaderMetadata(
+            id=self.id,
+            original_input_directory_path=str(self.input_directory_path),
+            split_text=self.split_text,
+            ignore_patterns=self.ignore_patterns,
+            relative_processed_directories=[
+                str(
+                    loader.output_directory_path.relative_to(self.output_directory_path)
+                )
+                for loader in self.file_loaders.values()
+            ],
+        )
+
+        metadata_path = self.output_directory_path / "directory_metadata.json"
+        with metadata_path.open("w") as f:
+            json.dump(asdict(metadata), f, indent=2)
+
+    @classmethod
+    def from_directory(
+        cls,
+        processed_directory_path: str | Path,
+        ignore_patterns: list[str] | None = None,
+    ) -> InputDirectoryReader:
+        """
+        Create an InputDirectoryReader instance from a previously processed directory.
+
+        Args:
+            processed_directory_path: Path to the directory containing processed files
+            ignore_patterns: Optional list of glob patterns to ignore
+
+        Returns:
+            InputDirectoryReader instance with restored state
+        """
+
+        directory_path = Path(processed_directory_path).resolve()
+        metadata_path = directory_path / "directory_metadata.json"
+
+        if not directory_path.exists() or not directory_path.is_dir():
+            raise SkyAgentValidationError(f"Invalid directory path: {directory_path}")
+
+        if not metadata_path.exists():
+            raise SkyAgentValidationError(
+                f"No directory_metadata.json found in directory: {directory_path}"
+            )
+
+        with metadata_path.open("r") as f:
+            metadata_dict = json.load(f)
+            metadata = InputDirectoryReaderMetadata(**metadata_dict)
+
+        instance = cls(
+            input_directory_path=metadata.original_input_directory_path,
+            output_directory_path=directory_path,
+            split_text=metadata.split_text,
+            ignore_patterns=ignore_patterns or metadata.ignore_patterns,
+        )
+
+        instance.id = metadata.id
+        instance.file_loaders = {}
+
+        for rel_dir in metadata.relative_processed_directories:
+            process_dir = directory_path / rel_dir
+
+            if not process_dir.exists() or not process_dir.is_dir():
+                logger.warning(f"Processed directory not found: {process_dir}")
+                continue
+
+            try:
+                file_loader = InputFileLoader.from_directory(process_dir)
+                instance.file_loaders[file_loader.input_path] = file_loader
+            except Exception as e:
+                logger.error(f"Failed to load directory {process_dir}: {e!s}")
+                continue
+
+        if not instance.file_loaders:
+            logger.warning("No file loaders could be restored from the directory")
+
+        return instance

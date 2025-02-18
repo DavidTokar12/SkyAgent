@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 
+from dataclasses import asdict
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING
@@ -24,8 +27,18 @@ from skyagent.utils import is_binary_string
 if TYPE_CHECKING:
     from skyagent.base.input_loader.text_splitter import TextSplitter
 
-# TODO: make it possible to load from input folder
-# TODO: Write tests for each file type
+
+@dataclass
+class InputFileLoaderMetadata:
+    id: str
+    original_input_path: str
+    file_type: str  # Store as string since enums aren't JSON serializable
+    split_text: bool
+    chunk_lengths: list[int]
+
+    relative_text_file_paths: list[str]
+    relative_image_paths: list[str]
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +131,6 @@ class InputFileLoader:
                     )
 
             file_dir = base_dir / f"{file_name}_{self.id}"
-            file_dir.mkdir(parents=True, exist_ok=False)
-
             return file_dir
 
         except Exception as e:
@@ -233,8 +244,98 @@ class InputFileLoader:
             self.extracted_image_paths.append(image_path)
 
     def load(self):
+        self.output_directory_path.mkdir(parents=True, exist_ok=False)
+
         with self.input_path.open("rb") as f:
             if is_binary_string(f.read(1024)):
                 self._load_binary_file()
             else:
                 self._load_text_file()
+
+        self.save_metadata()
+
+    def save_metadata(self) -> None:
+        """Save metadata about the processed file to enable later loading."""
+        if not hasattr(self, "file_type") or self.file_type is None:
+            raise SkyAgentValidationError("No file has been processed yet")
+
+        metadata = InputFileLoaderMetadata(
+            id=self.id,
+            original_input_path=str(self.input_path),
+            file_type=self.file_type.name if self.file_type else None,
+            split_text=self.split_text,
+            chunk_lengths=self.chunk_lengths,
+            relative_text_file_paths=[
+                str(p.relative_to(self.output_directory_path))
+                for p in self.extracted_text_file_paths
+            ],
+            relative_image_paths=[
+                str(p.relative_to(self.output_directory_path))
+                for p in self.extracted_image_paths
+            ],
+        )
+
+        metadata_path = self.output_directory_path / "file_metadata.json"
+        with metadata_path.open("w") as f:
+            json.dump(asdict(metadata), f, indent=2)
+
+    @classmethod
+    def from_directory(cls, directory_path: str | Path) -> InputFileLoader:
+        """
+        Create an InputFileLoader instance from a previously processed directory.
+
+        Args:
+            directory_path: Path to the directory containing processed files
+            file_converter_functions: Optional custom converter functions
+
+        Returns:
+            InputFileLoader instance with restored state
+        """
+        directory_path = Path(directory_path).resolve()
+        metadata_path = directory_path / "file_metadata.json"
+
+        if not directory_path.exists() or not directory_path.is_dir():
+            raise SkyAgentValidationError(f"Invalid directory path: {directory_path}")
+
+        if not metadata_path.exists():
+            raise SkyAgentValidationError(
+                f"No metadata.json found in directory: {directory_path}"
+            )
+
+        with metadata_path.open("r") as f:
+            metadata_dict = json.load(f)
+            metadata = InputFileLoaderMetadata(**metadata_dict)
+
+        instance = cls(
+            input_path=metadata.original_input_path,
+            output_directory_path=directory_path.parent,
+            split_text=metadata.split_text,
+        )
+
+        instance.id = metadata.id
+        instance.output_directory_path = directory_path
+
+        if metadata.file_type in BinaryFileType.__members__:
+            instance.file_type = BinaryFileType[metadata.file_type]
+        elif metadata.file_type in TextFileType.__members__:
+            instance.file_type = TextFileType[metadata.file_type]
+
+        instance.chunk_lengths = metadata.chunk_lengths
+        instance.extracted_text_file_paths = [
+            directory_path / p for p in metadata.relative_text_file_paths
+        ]
+        instance.extracted_image_paths = [
+            directory_path / p for p in metadata.relative_image_paths
+        ]
+
+        missing_files = [
+            p
+            for p in instance.extracted_text_file_paths + instance.extracted_image_paths
+            if not p.exists()
+        ]
+        if missing_files:
+            raise SkyAgentValidationError(
+                f"Some processed files are missing: {missing_files}"
+            )
+
+        return instance

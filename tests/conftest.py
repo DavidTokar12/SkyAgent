@@ -66,3 +66,11 @@ def base_input(test_inputs):
     input_name = "base_input"
     input_data = test_inputs[input_name]
     return input_name, input_data
+
+
+@pytest.fixture
+def temp_output_dir(tmp_path):
+    """Fixture to create a temporary directory for test outputs"""
+    output_dir = tmp_path / "test_outputs"
+    output_dir.mkdir()
+    return output_dir
