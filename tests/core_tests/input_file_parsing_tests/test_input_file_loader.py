@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from skyagent.base.input_loader.input_file_loader import InputFileLoader
+from skyagent.input_loader.input_file_loader import InputFileLoader
+from tests.utils import compare_file_loaders
 
 
 def test_file_loader_from_directory(temp_output_dir):
@@ -20,25 +21,9 @@ def test_file_loader_from_directory(temp_output_dir):
     original_loader.load()
 
     processed_dir = next(temp_output_dir.iterdir())
+
     assert processed_dir.is_dir(), "No directory was created"
 
     loaded_loader = InputFileLoader.from_directory(processed_dir)
 
-    assert original_loader.id == loaded_loader.id, "IDs don't match"
-    assert (
-        original_loader.file_type == loaded_loader.file_type
-    ), "File types don't match"
-    assert (
-        original_loader.split_text == loaded_loader.split_text
-    ), "Split text settings don't match"
-    assert (
-        original_loader.chunk_lengths == loaded_loader.chunk_lengths
-    ), "Chunk lengths don't match"
-
-    original_text_paths = {p.name for p in original_loader.extracted_text_file_paths}
-    loaded_text_paths = {p.name for p in loaded_loader.extracted_text_file_paths}
-    assert original_text_paths == loaded_text_paths, "Text file paths don't match"
-
-    original_image_paths = {p.name for p in original_loader.extracted_image_paths}
-    loaded_image_paths = {p.name for p in loaded_loader.extracted_image_paths}
-    assert original_image_paths == loaded_image_paths, "Image file paths don't match"
+    compare_file_loaders(original_loader, loaded_loader)

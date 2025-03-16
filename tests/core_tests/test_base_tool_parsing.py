@@ -4,7 +4,7 @@ import pytest
 
 from skyagent.base.exceptions import SkyAgentDetrimentalError
 from skyagent.base.exceptions import SkyAgentToolParsingError
-from skyagent.base.tools import BaseTool
+from skyagent.base.tools import Tool
 
 
 def test_basic_tool_parsing():
@@ -20,7 +20,7 @@ def test_basic_tool_parsing():
         """
         return "test"
 
-    tool = BaseTool(tool_function=sample_func)
+    tool = Tool(tool_function=sample_func)
 
     assert tool.name == "sample_func"
     assert (
@@ -44,7 +44,7 @@ def test_tool_with_optional_parameters():
         """
         return {}
 
-    tool = BaseTool(tool_function=func_with_defaults)
+    tool = Tool(tool_function=func_with_defaults)
 
     assert tool.required_properties == ["a"]
     assert len(tool.parameters) == 3
@@ -66,7 +66,7 @@ def test_tool_with_complex_types():
         """
         return {}
 
-    tool = BaseTool(tool_function=complex_func)
+    tool = Tool(tool_function=complex_func)
 
     assert {p.name: p.type for p in tool.parameters} == {
         "data": "object",
@@ -80,7 +80,7 @@ def test_missing_docstring():
         return "test"
 
     with pytest.raises(SkyAgentToolParsingError) as exc_info:
-        BaseTool(tool_function=no_docs)
+        Tool(tool_function=no_docs)
 
     assert "must have a function description" in str(exc_info.value)
 
@@ -96,7 +96,7 @@ def test_missing_type_annotation():
         return "test"
 
     with pytest.raises(SkyAgentToolParsingError) as exc_info:
-        BaseTool(tool_function=missing_type)
+        Tool(tool_function=missing_type)
 
     assert "must have a type annotation" in str(exc_info.value)
 
@@ -111,7 +111,7 @@ def test_invalid_parameter_type():
         return "test"
 
     with pytest.raises(SkyAgentToolParsingError) as exc_info:
-        BaseTool(tool_function=invalid_type)
+        Tool(tool_function=invalid_type)
 
     assert "must be annotated with one of" in str(exc_info.value)
 
@@ -126,7 +126,7 @@ def test_missing_return_type():
         return 1
 
     with pytest.raises(SkyAgentToolParsingError) as exc_info:
-        BaseTool(tool_function=no_return)
+        Tool(tool_function=no_return)
 
     assert "Return type annotation is required" in str(exc_info.value)
 
@@ -141,7 +141,7 @@ def test_input_parameter_validation():
         """
         return "test"
 
-    tool = BaseTool(tool_function=sample_func)
+    tool = Tool(tool_function=sample_func)
 
     # Test valid conversions
     assert tool.validate_and_convert_input_param("a", "123") == 123
@@ -167,7 +167,7 @@ def test_async_function_detection():
         """
         return "test"
 
-    tool = BaseTool(tool_function=async_func)
+    tool = Tool(tool_function=async_func)
     assert tool.is_async
 
 
@@ -180,7 +180,7 @@ def test_compute_heavy_flag():
         """
         return "test"
 
-    tool = BaseTool(tool_function=sample_func, is_compute_heavy=True)
+    tool = Tool(tool_function=sample_func, is_compute_heavy=True)
     assert tool.is_compute_heavy
 
 
@@ -193,5 +193,5 @@ def test_additional_properties_flag():
         """
         return "test"
 
-    tool = BaseTool(tool_function=sample_func, additional_properties=True)
+    tool = Tool(tool_function=sample_func, additional_properties=True)
     assert tool.additional_properties

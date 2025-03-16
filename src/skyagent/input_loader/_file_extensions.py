@@ -4,7 +4,7 @@ from __future__ import annotations
 BINARY_FILE_EXTENSIONS = {
     "pdf": [".pdf"],
     "doc": [".doc", ".docx"],
-    "csv": [".csv", ".xls", ".xlsx"],
+    "xls": [".xls", ".xlsx"],
     "ppt": [".ppt", ".pptx"],
     "img": [".jpg", ".jpeg", ".png"],
 }
@@ -759,4 +759,5 @@ TEXT_FILE_EXTENSIONS = {
         ".xul",
         ".zcml",
     ],
+    "csv": [".csv"],
 }

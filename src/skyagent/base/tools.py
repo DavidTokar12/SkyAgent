@@ -62,7 +62,7 @@ class AgentToolParameter:
     description: str
 
 
-class BaseTool:
+class Tool:
     """
     A class representing a tool (function) the LLM can call.
     """

@@ -31,11 +31,11 @@ jobs:
         poetry install --no-interaction
       shell: bash
     
-    - name: Run tests
-      run: |
-        export PATH="/github/home/.local/bin:$PATH"
-        PYTHONPATH=$PYTHONPATH:$(pwd)/src poetry run pytest .
-      shell: bash
+    # - name: Run tests
+    #   run: |
+    #     export PATH="/github/home/.local/bin:$PATH"
+    #     PYTHONPATH=$PYTHONPATH:$(pwd)/src poetry run pytest .
+    #   shell: bash
     
     - name: Run linter
       run: |

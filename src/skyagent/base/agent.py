@@ -6,515 +6,481 @@ import uuid
 
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from skyagent.base.chat_message import AssistantChatMessage
-from skyagent.base.chat_message import ChatMessageRole
-from skyagent.base.chat_message import SystemChatMessage
-from skyagent.base.chat_message import UserChatMessage
+from skyagent.base.api_adapters.api_adapter import ApiAdapter
+from skyagent.base.api_adapters.api_adapter import ApiUsage
+from skyagent.base.api_adapters.api_adapter import CompletionResponse
+from skyagent.base.api_adapters.api_adapter_registry import ApiRegistry
+from skyagent.base.chat_message import AssistantMessage
 from skyagent.base.exceptions import SkyAgentDetrimentalError
-from skyagent.base.logger import AgentLogger
+from skyagent.base.exceptions import SkyAgentTypeError
+from skyagent.base.loggers.agent_logger import AgentLogger
 from skyagent.base.tools import ToolCallResult
-from skyagent.base.utils import get_or_create_event_loop
 
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from skyagent.base.chat_message import BaseChatMessage
-    from skyagent.base.llm_api_adapter import CompletionResponse
+    from skyagent.base.chat_message import _BaseMessage
+    from skyagent.base.chat_message import SystemMessage
+    from skyagent.base.loggers.base_agent_logger import BaseAgentLogger
     from skyagent.base.tools import TOOL_ARG_TYPES
-    from skyagent.base.tools import BaseTool
+    from skyagent.base.tools import Tool
     from skyagent.base.tools import ToolCall
 
 
-def run_async_in_task(async_func, *args, **kwargs):
-    """Wrapper to run an async function in a synchronous way."""
+@dataclass
+class _PreparedToolCall:
+    tool_call: ToolCall
+    tool_wrapper: Tool
+    parsed_arguments: dict[str, TOOL_ARG_TYPES]
 
-    return asyncio.run(async_func(*args, **kwargs))
 
-
-class BaseAgent:
+class Agent:
 
     def __init__(
         self,
-        name: str,
+        agent_name: str,
         model: str,
-        system_prompt: str | Path,
-        tools: list[BaseTool] | None = None,
+        api_adapter: str | type[ApiAdapter],
+        system_prompt: SystemMessage | None = None,
         max_turns: int = 10,
+        tools: list[Tool] | None = None,
+        logger: type[BaseAgentLogger] | None = None,
+        logger_extra_args: dict | None = None,
         token: str | None = None,
-        parallelize: bool = True,
         num_processes: int = 4,
-        temperature: float = 0.0,
         timeout: int = 10,
-        log_file_path: Path | None = None,
-        log_server: str | None = None,
-        enable_live_display: bool = False,
+        model_extra_args: dict | None = None,
+        client_extra_args: dict | None = None,
     ):
         """
-        Initializes a new instance of Agent..
+        Initializes a new instance of an Agent, that can handle tool call loops from an LLM.
 
         Args:
-            name (str): Human-readable name for the agent.
+            agent_name (str): Human-readable name for the agent.
             model (str): The LLM model name/identifier.
-            system_prompt (str | Path): The system-level prompt or path to file containing it.
+            api_adapter (str | type[ApiAdapter]): The API adapter to use for the agent. Use one of the predefined adapters('openai', 'anthropic'...) or a custom one.
+            system_prompt (SystemChatMessage | None, optional):  The system prompt instructing the agent.
             tools (list[BaseTool] | None): Optional list of tools the agent can use.
             max_turns (int, optional): Max conversation turns before completion. Defaults to 10.
+            logger (type[BaseAgentLogger] | None, optional): Optional logger class for the agent. Defaults to None, in which case the base terminal logger will be used.
+            logger_extra_args (dict | None, optional): Optional extra arguments for the logger. Defaults to None.
             token (str | None, optional): API token or authentication credentials for the LLM. Defaults to None.
-            parallelize (bool, optional): If True, allows concurrent processing of tool calls. Defaults to True.
             num_processes (int, optional): Number of worker processes for heavy or concurrent tasks. Defaults to 4.
-            temperature (float, optional): LLM temperature setting. Defaults to 0.0.
-            timeout (int, optional): Timeout in seconds for LLM queries. Defaults to 3.
-            log_file_path (Path | None, optional): Path for log file output. Defaults to None.
-            log_server (str | None, optional): Server address for HTTP logging. Defaults to None.
-            enable_live_display (bool, optional): If True, shows a Rich live logging dashboard. Defaults to False.
+            timeout (int, optional): Timeout in seconds for LLM queries. Defaults to 10.
+            model_extra_args (dict | None, optional): Optional extra arguments for the LLM model. Defaults to None.
+            client_extra_args (dict | None, optional): Optional extra arguments for the LLM Api client. Defaults to None.
         """
-        self.agent_id = str(uuid.uuid4())
-        self.name = name
-        self.model = model
-        self.token = token
-        self.temperature = temperature
-        self.timeout = timeout
-        self.log_file_path = log_file_path
-        self.log_server = log_server
-        self.enable_live_display = enable_live_display
 
-        if isinstance(system_prompt, Path):
-            if not system_prompt.exists():
-                raise FileNotFoundError(
-                    f"System prompt file not found: '{system_prompt}'"
-                )
-            with open(system_prompt) as f:
-                self.system_prompt = f.read()
+        self._agent_id = str(uuid.uuid4())
+
+        self._agent_name = agent_name
+        self._model = model
+        self._system_prompt = system_prompt
+        self._token = token
+        self._timeout = timeout
+        self._model_extra_args = model_extra_args
+        self._client_extra_args = client_extra_args
+        self._max_turns = max_turns
+        self._num_processes = num_processes
+
+        if isinstance(api_adapter, str):
+            adapter_class = ApiRegistry.get_adapter_class(api_adapter)
+        elif isinstance(api_adapter, type) and issubclass(api_adapter, ApiAdapter):
+            adapter_class = api_adapter
         else:
-            self.system_prompt = system_prompt
-
-        self.tools_array = tools
-        self.tools_dict = {tool.name: tool for tool in tools} if tools else None
-
-        self.max_turns = max_turns
-
-        self.chat_history: list[BaseChatMessage] = [
-            SystemChatMessage(content=self.system_prompt)
-        ]
-
-        # Concurrency-related
-        self.parallelize = parallelize
-        self.num_processes = num_processes
-
-        self.logger = AgentLogger(
-            agent_id=self.agent_id,
-            agent_name=self.name,
-            agent_model=self.model,
-            agent_parallelize=self.parallelize,
-            agent_chat_history=self.chat_history,
-            agent_tools=self.tools_array,
-            log_file_path=self.log_file_path,
-            log_server=self.log_server,
-            enable_live_display=self.enable_live_display,
-        )
-
-        self._initialize_client()
-
-        self.logger.log_agent_initialized()
-
-    def _initialize_client(self):
-        """
-        Initializes or configures the LLM client.
-
-        Raises:
-            NotImplementedError: Must be overridden by child classes for specific LLM setup.
-        """
-        raise NotImplementedError(
-            "Client initialization must be implemented by agent child classes."
-        )
-
-    def call_agent(
-        self, query: str, response_format: BaseModel | None = None
-    ) -> CompletionResponse:
-        """
-        Entry point to invoke the agent with a given query.
-
-        Args:
-            query (str): The user-provided query or request.
-            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
-
-        Returns:
-            CompletionResponse: The final LLM response, if successfully completed.
-        """
-        if self.enable_live_display:
-            with self.logger.live_dashboard_context():
-                return self._execute_agent_call(
-                    query=query, response_format=response_format
-                )
-        return self._execute_agent_call(query=query, response_format=response_format)
-
-    def _execute_agent_call(
-        self, query: str, response_format: BaseModel | None = None
-    ) -> CompletionResponse:
-        """
-        Handles the main call logic, orchestrating the conversation loop and tool usage.
-
-        Args:
-            query (str): The user or external request to process.
-            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
-
-        Returns:
-            CompletionResponse: The final LLM completion, if available.
-
-        Raises:
-            SkyAgentDetrimentalError: If there is a fatal error during execution.
-        """
-        try:
-            self.logger.log_query_received(query=query)
-
-            start_time = time.time()
-
-            self.chat_history.append(
-                UserChatMessage(role=ChatMessageRole.user, content=query)
+            raise SkyAgentTypeError(
+                "'api_adapter' must be either a string identifier or an ApiAdapter class(not instance)"
             )
 
-            for current_turn in range(1, self.max_turns + 1, 1):
+        self._client = adapter_class(
+            model=self._model,
+            token=self._token,
+            timeout=self._timeout,
+            model_extra_args=self._model_extra_args,
+            client_extra_args=self._client_extra_args,
+        )
 
-                self.logger.log_chat_loop_started(turn=current_turn)
+        self._tools_array = tools
+        self._tools_dict = {tool.name: tool for tool in tools} if tools else {}
 
-                completion = self.client.get_completion(
+        self.chat_history: list[_BaseMessage] = [system_prompt] if system_prompt else []
+
+        logger = logger if logger else AgentLogger
+        self._logger = logger(
+            agent_id=self._agent_id,
+            agent_name=self._agent_name,
+            agent_model=self._model,
+            agent_chat_history=self.chat_history,
+            agent_tools=self._tools_array,
+            **(logger_extra_args if logger_extra_args else {}),
+        )
+
+        self._logger.log_agent_initialized()
+
+    async def call_agent(
+        self,
+        input_chat_history: list[_BaseMessage],
+        response_format: BaseModel | None = None,
+    ) -> CompletionResponse:
+        """
+        Entry point to invoke the agent.
+
+        Args:
+            input_chat_history (list[BaseChatMessage]): The input chat history.
+            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
+
+        Returns:
+            CompletionResponse: The final complete LLM response.
+        """
+
+        return await self._execute_agent_call(
+            input_chat_history=input_chat_history, response_format=response_format
+        )
+
+    def call_agent_sync(
+        self,
+        input_chat_history: list[_BaseMessage],
+        response_format: BaseModel | None = None,
+    ) -> CompletionResponse:
+        """
+        Entry point to invoke the agent synchronously.
+
+        Args:
+            input_chat_history (list[BaseChatMessage]): The user-provided input chat history.
+            response_format (BaseModel | None, optional): Optional for validated structured output. Defaults to None.
+
+        Returns:
+            CompletionResponse: The final complete LLM response.
+        """
+
+        async def _run():
+            return await self._execute_agent_call(
+                input_chat_history=input_chat_history, response_format=response_format
+            )
+
+        return asyncio.get_event_loop().run_until_complete(_run())
+
+    async def _execute_agent_call(
+        self,
+        input_chat_history: list[_BaseMessage],
+        response_format: BaseModel | None = None,
+    ) -> CompletionResponse:
+
+        total_input_usage = 0
+        total_output_usage = 0
+
+        start_time = time.time()
+
+        self._logger.log_input_chat_history_received(
+            input_chat_history=input_chat_history
+        )
+
+        # Chat history is used by logger, so append instead of reassigning
+        for message in input_chat_history:
+            self.chat_history.append(message)
+
+        try:
+
+            for current_turn in range(1, self._max_turns + 1):
+
+                self._logger.log_chat_loop_started(turn=current_turn)
+
+                completion = self._client.get_completion(
                     chat_history=self.chat_history,
-                    tools=self.tools_array,
+                    tools=self._tools_array,
                     response_format=response_format,
                 )
 
+                total_input_usage += completion.usage.input_tokens
+                total_output_usage += completion.usage.output_tokens
+
                 if completion.tool_calls:
 
-                    self.logger.log_tool_calls_received(completion.tool_calls)
+                    self._logger.log_tool_calls_received(completion.tool_calls)
 
-                    tool_call_results = self._execute_all_tool_calls(
+                    tool_call_results = await self._execute_all_tool_calls(
                         completion.tool_calls
                     )
 
                     for tool_call_result in tool_call_results:
-                        tool_result_answer = self.client.convert_tool_result_answer(
+                        tool_result_answer = self._client.convert_tool_result_answer(
                             tool_call_result=tool_call_result
                         )
                         self.chat_history.append(tool_result_answer)
 
                 else:
                     self.chat_history.append(
-                        AssistantChatMessage(content=completion.content)
+                        AssistantMessage(content=completion.content)
                     )
 
                     execution_time = time.time() - start_time
 
-                    self.logger.log_final_completion(
+                    self._logger.log_final_completion(
                         completion=completion, execution_time=execution_time
                     )
 
-                    return completion
+                    return CompletionResponse(
+                        content=completion.content,
+                        tool_calls=None,
+                        usage=completion.usage,
+                    )
 
-            self.logger.log_error(
+            self._logger.log_error(
                 SkyAgentDetrimentalError("Max turns reached with no final completion.")
             )
-            # TODO also return a completion, with content None, and usage information
-            return None
+
+            return CompletionResponse(
+                content=None,
+                tool_calls=None,
+                usage=ApiUsage(
+                    output_tokens=total_output_usage, input_tokens=total_input_usage
+                ),
+            )
+
         except SkyAgentDetrimentalError as e:
-            self.logger.log_error(e)
+            self._logger.log_error(e)
+            raise e
 
-    def _execute_all_tool_calls(
-        self, tool_calls: list[ToolCall]
-    ) -> list[ToolCallResult]:
-        """
-        Routes tool calls into inline, async, or compute-heavy methods and collects the results.
+    def _prepare_tool_call(self, tool_call: ToolCall) -> _PreparedToolCall:
+        """Prepares a tool call by ensuring the tool exists and converting its arguments."""
 
-        Args:
-            tool_calls (list[ToolCall]): A batch of tool calls requested by the model.
-
-        Returns:
-            list[ToolCallResult]: The aggregated results of all tool calls.
-        """
-        inline_tool_calls = []
-        async_tool_calls = []
-        compute_heavy_tool_calls = []
-
-        for tool_call in tool_calls:
-            function_name = tool_call.function_name
-
-            tool_wrapper = self.tools_dict.get(function_name)
-
-            if not tool_wrapper:
-                raise SkyAgentDetrimentalError(
-                    f"Tool '{tool_call.function_name}' not found in the agent named '{
-                        self.name}' tool definitions.",
-                )
-
-            if tool_wrapper.is_compute_heavy:
-                compute_heavy_tool_calls.append(tool_call)
-            elif tool_wrapper.is_async:
-                async_tool_calls.append(tool_call)
-            else:
-                inline_tool_calls.append(tool_call)
-
-        inline_results = self._execute_inline_tool_calls(tool_calls=inline_tool_calls)
-        compute_heavy_results = self._execute_compute_heavy_tool_calls(
-            tool_calls=compute_heavy_tool_calls
-        )
-        async_results = self._execute_async_tool_calls(tool_calls=async_tool_calls)
-
-        return inline_results + compute_heavy_results + async_results
-
-    def _parse_tool_call_args(self, tool_call: ToolCall) -> dict[str, TOOL_ARG_TYPES]:
-        """
-        Converts and validates raw tool call arguments into typed forms required by the tool.
-
-        Args:
-            tool_call (ToolCall): The requested tool call details.
-
-        Returns:
-            dict[str, TOOL_ARG_TYPES]: A dictionary of validated and converted argument values.
-
-        Raises:
-            SkyAgentDetrimentalError: If the tool does not exist in the agent's tool dictionary.
-        """
-
-        tool_wrapper = self.tools_dict.get(tool_call.function_name)
+        tool_wrapper = self._tools_dict.get(tool_call.function_name)
 
         if not tool_wrapper:
             raise SkyAgentDetrimentalError(
-                "Tool '{tool_call.function_name}' not found in the agent named '{self.name}' tool definitions.",
+                f"Tool '{tool_call.function_name}' not found in agent '{self._agent_name}' definitions."
             )
 
-        converted_args = {}
+        parsed_arguments = {}
         for param_name, param_value in tool_call.arguments.items():
-            converted_args[param_name] = self.tools_dict[
-                tool_call.function_name
-            ].validate_and_convert_input_param(
-                input_param_name=param_name, input_param_value=param_value
+            parsed_arguments[param_name] = (
+                tool_wrapper.validate_and_convert_input_param(
+                    input_param_name=param_name, input_param_value=param_value
+                )
             )
 
-        return converted_args
+        return _PreparedToolCall(
+            tool_call=tool_call,
+            tool_wrapper=tool_wrapper,
+            parsed_arguments=parsed_arguments,
+        )
 
-    def _execute_inline_tool_calls(
+    async def _execute_all_tool_calls(
         self, tool_calls: list[ToolCall]
     ) -> list[ToolCallResult]:
         """
-        Executes a list of inline (synchronous) tool calls sequentially.
-
-        Args:
-            tool_calls (list[ToolCall]): Tool calls that are neither async nor compute-heavy.
-
-        Returns:
-            list[ToolCallResult]: A list of results from inline tool execution.
+        Prepares and routes tool calls into inline, async, or compute-heavy methods.
+        All heavy operations (async and compute-heavy) run concurrently.
         """
+        prepared_calls = [self._prepare_tool_call(tc) for tc in tool_calls]
+
+        inline_calls = []
+        async_calls = []
+        compute_heavy_calls = []
+
+        for prepared in prepared_calls:
+            if prepared.tool_wrapper.is_async:
+                async_calls.append(prepared)
+            elif prepared.tool_wrapper.is_compute_heavy:
+                compute_heavy_calls.append(prepared)
+            else:
+                inline_calls.append(prepared)
+
+        inline_results = self._execute_inline_tool_calls(inline_calls)
+
+        try:
+            async with asyncio.timeout(self._timeout):
+                async_task = asyncio.create_task(
+                    self._execute_async_tool_calls(async_calls)
+                )
+                compute_heavy_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        self._execute_compute_heavy_tool_calls, compute_heavy_calls
+                    )
+                )
+
+                async_results, compute_heavy_results = await asyncio.gather(
+                    async_task, compute_heavy_task, return_exceptions=True
+                )
+
+                for result in (async_results, compute_heavy_results):
+                    if isinstance(result, Exception):
+                        raise result
+
+        except asyncio.TimeoutError as e:
+            if not async_task.done():
+                async_task.cancel()
+            if not compute_heavy_task.done():
+                compute_heavy_task.cancel()
+
+            raise SkyAgentDetrimentalError(
+                "Timeout while executing async and compute-heavy tools"
+            ) from e
+
+        except Exception as e:
+            raise SkyAgentDetrimentalError(
+                "Error executing async or compute-heavy tools"
+            ) from e
+
+        return [*inline_results, *compute_heavy_results, *async_results]
+
+    def _execute_inline_tool_calls(
+        self, prepared_calls: list[_PreparedToolCall]
+    ) -> list[ToolCallResult]:
+        """Execute a list of inline (synchronous) tool calls sequentially."""
 
         results = []
-
-        for tool_call in tool_calls:
-
-            self.logger.started_executing_tool_call(
-                tool_call, is_async=False, is_compute_heavy=False
-            )
-
-            tool_wrapper = self.tools_dict.get(tool_call.function_name)
-            parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
-
+        for prepared in prepared_calls:
             try:
+                self._logger.log_tool_call_started(
+                    prepared.tool_call, is_async=False, is_compute_heavy=False
+                )
 
-                result_value = tool_wrapper.tool_function(**parsed_arguments)
+                result_value = prepared.tool_wrapper.tool_function(
+                    **prepared.parsed_arguments
+                )
+
                 tool_call_result = ToolCallResult(
-                    id=tool_call.id,
-                    function_name=tool_call.function_name,
-                    arguments=tool_call.arguments,
+                    id=prepared.tool_call.id,
+                    function_name=prepared.tool_call.function_name,
+                    arguments=prepared.tool_call.arguments,
                     result=result_value,
                 )
 
-                self.logger.log_tool_call_finished(tool_call_result=tool_call_result)
-
+                self._logger.log_tool_call_finished(tool_call_result)
                 results.append(tool_call_result)
 
             except Exception as e:
                 raise SkyAgentDetrimentalError(
-                    f"Error executing tool '{tool_call.function_name}': '{e}'"
-                )
+                    f"Tool '{prepared.tool_call.function_name}' execution failed"
+                ) from e
 
         return results
 
-    def _execute_compute_heavy_tool_calls(
-        self, tool_calls: list[ToolCall]
+    async def _execute_async_tool_calls(
+        self, prepared_calls: list[_PreparedToolCall]
     ) -> list[ToolCallResult]:
-        """
-        Executes compute-heavy tool calls in a ProcessPoolExecutor for parallelism.
+        """Execute all async tools concurrently using TaskGroup."""
+        if not prepared_calls:
+            return []
 
-        Args:
-            tool_calls (list[ToolCall]): Tool calls marked as compute-heavy.
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [
+                    tg.create_task(self._execute_single_async_tool(prepared))
+                    for prepared in prepared_calls
+                ]
 
-        Returns:
-            list[ToolCallResult]: A list of results from compute-heavy executions.
+            return [task.result() for task in tasks]
 
-        Raises:
-            SkyAgentDetrimentalError: If a tool call fails or a tool is not found.
-        """
-        results = []
+        except* asyncio.TimeoutError as eg:
 
-        if not tool_calls:
-            return results
+            failed_tools = [
+                prepared_calls[i].tool_call.function_name
+                for i, exc in enumerate(eg.exceptions)
+                if isinstance(exc, asyncio.TimeoutError)
+            ]
 
-        with ProcessPoolExecutor(
-            max_workers=self.num_processes if self.parallelize else 1
-        ) as executor:
+            raise SkyAgentDetrimentalError(
+                f"Tools timed out: {', '.join(failed_tools)}"
+            ) from eg
 
-            futures = {}
-            for tool_call in tool_calls:
+        except* Exception as eg:
+            for exc in eg.exceptions:
+                self._logger.error("Async tool execution failed", exc_info=exc)
+            raise SkyAgentDetrimentalError(
+                "Multiple async tool executions failed"
+            ) from eg
 
-                tool_wrapper = self.tools_dict.get(tool_call.function_name)
+    async def _execute_single_async_tool(
+        self,
+        prepared: _PreparedToolCall,
+    ) -> ToolCallResult:
+        """Execute a single async tool with proper error handling."""
+        try:
 
-                self.logger.started_executing_tool_call(
-                    tool_call,
-                    is_async=tool_wrapper.is_async,
-                    is_compute_heavy=True,
-                )
-
-                if not tool_wrapper:
-                    raise SkyAgentDetrimentalError(
-                        f"Tool {tool_call.function_name} not found in the agent named {
-                            self.name} tool definitions.",
-                    )
-
-                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
-
-                if tool_wrapper.is_async:
-                    futures[
-                        executor.submit(
-                            run_async_in_task,
-                            tool_wrapper.tool_function,
-                            **parsed_arguments,
-                        )
-                    ] = tool_call
-                else:
-                    futures[
-                        executor.submit(tool_wrapper.tool_function, **parsed_arguments)
-                    ] = tool_call
-
-            for future in as_completed(futures):
-
-                tool_call = futures[future]
-
-                try:
-                    result_value = future.result()
-                    tool_call_result = ToolCallResult(
-                        id=tool_call.id,
-                        function_name=tool_call.function_name,
-                        arguments=tool_call.arguments,
-                        result=result_value,
-                    )
-
-                    self.logger.log_tool_call_finished(
-                        tool_call_result=tool_call_result
-                    )
-
-                    results.append(tool_call_result)
-                except Exception as e:
-                    raise SkyAgentDetrimentalError(
-                        f"Tool execution failed with error: {e}"
-                    )
-
-        return results
-
-    def _execute_async_tool_calls(
-        self, tool_calls: list[ToolCall]
-    ) -> list[ToolCallResult]:
-        """
-        Executes asynchronous tool calls using an event loop.
-
-        Args:
-            tool_calls (list[ToolCall]): Tool calls requiring async execution.
-
-        Returns:
-            list[ToolCallResult]: A list of results from async tool execution.
-
-        Raises:
-            SkyAgentDetrimentalError: If a tool call fails or a tool is not found.
-        """
-        results = []
-        if not tool_calls:
-            return results
-
-        loop = get_or_create_event_loop()
-
-        if self.parallelize:
-            tasks = []
-            for tool_call in tool_calls:
-                tool_wrapper = self.tools_dict.get(tool_call.function_name)
-
-                if not tool_wrapper:
-                    raise SkyAgentDetrimentalError(
-                        f"Tool '{tool_call.function_name}' not found in agent '{
-                            self.name}' definitions."
-                    )
-
-                self.logger.started_executing_tool_call(
-                    tool_call, is_async=True, is_compute_heavy=False
-                )
-
-                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
-                tasks.append(
-                    loop.create_task(tool_wrapper.tool_function(**parsed_arguments))
-                )
-
-            all_results = loop.run_until_complete(
-                asyncio.gather(*tasks, return_exceptions=True)
+            self._logger.log_tool_call_started(
+                prepared.tool_call, is_async=True, is_compute_heavy=False
             )
 
-            for tool_call, result_value_or_exc in zip(tool_calls, all_results):
-                if isinstance(result_value_or_exc, Exception):
-                    raise SkyAgentDetrimentalError(
-                        f"Async tool '{tool_call.function_name}' execution failed: {
-                            result_value_or_exc}"
-                    )
-
-                result = ToolCallResult(
-                    id=tool_call.id,
-                    function_name=tool_call.function_name,
-                    arguments=tool_call.arguments,
-                    result=result_value_or_exc,
+            async with asyncio.timeout(self._timeout):
+                result_value = await prepared.tool_wrapper.tool_function(
+                    **prepared.parsed_arguments
                 )
 
-                self.logger.log_tool_call_finished(result)
+            tool_call_result = ToolCallResult(
+                id=prepared.tool_call.id,
+                function_name=prepared.tool_call.function_name,
+                arguments=prepared.tool_call.arguments,
+                result=result_value,
+            )
 
-                results.append(result)
-        else:
-            for tool_call in tool_calls:
-                tool_wrapper = self.tools_dict.get(tool_call.function_name)
+            self._logger.log_tool_call_finished(tool_call_result)
+            return tool_call_result
 
-                if not tool_wrapper:
-                    raise SkyAgentDetrimentalError(
-                        f"Tool '{tool_call.function_name}' not found in agent '{
-                            self.name}' definitions."
+        except asyncio.TimeoutError as e:
+            raise SkyAgentDetrimentalError(
+                f"Tool '{prepared.tool_call.function_name}' timed out after {self._timeout}s"
+            ) from e
+
+        except Exception as e:
+            raise SkyAgentDetrimentalError(
+                f"Tool '{prepared.tool_call.function_name}' execution failed"
+            ) from e
+
+    def _execute_compute_heavy_tool_calls(
+        self, prepared_calls: list[_PreparedToolCall]
+    ) -> list[ToolCallResult]:
+        """Execute all compute-heavy calls in process pool."""
+
+        if not prepared_calls:
+            return []
+
+        results = []
+
+        with ProcessPoolExecutor(max_workers=self._num_processes) as executor:
+            try:
+                futures = {}
+                for prepared in prepared_calls:
+                    self._logger.log_tool_call_started(
+                        prepared.tool_call,
+                        is_async=False,
+                        is_compute_heavy=True,
                     )
-
-                self.logger.started_executing_tool_call(
-                    tool_call, is_async=True, is_compute_heavy=False
-                )
-
-                parsed_arguments = self._parse_tool_call_args(tool_call=tool_call)
-                try:
-                    result = loop.run_until_complete(
-                        tool_wrapper.tool_function(**parsed_arguments)
+                    future = executor.submit(
+                        prepared.tool_wrapper.tool_function, **prepared.parsed_arguments
                     )
-                    result = ToolCallResult(
-                        id=tool_call.id,
-                        function_name=tool_call.function_name,
-                        arguments=tool_call.arguments,
-                        result=result,
-                    )
+                    futures[future] = prepared
 
-                    self.logger.log_tool_call_finished(result)
-
-                    results.append(result)
-                except Exception as e:
-                    raise SkyAgentDetrimentalError(
-                        f"Async tool '{
-                            tool_call.function_name}' execution failed: {e}"
-                    )
+                for future in as_completed(futures):
+                    prepared = futures[future]
+                    try:
+                        result_value = future.result(timeout=self._timeout)
+                        tool_call_result = ToolCallResult(
+                            id=prepared.tool_call.id,
+                            function_name=prepared.tool_call.function_name,
+                            arguments=prepared.tool_call.arguments,
+                            result=result_value,
+                        )
+                        self._logger.log_tool_call_finished(tool_call_result)
+                        results.append(tool_call_result)
+                    except TimeoutError as e:
+                        # Cancel remaining futures on timeout
+                        for f in futures:
+                            f.cancel()
+                        raise SkyAgentDetrimentalError(
+                            f"Tool '{prepared.tool_call.function_name}' timed out after {self._timeout}s"
+                        ) from e
+                    except Exception as e:
+                        raise SkyAgentDetrimentalError(
+                            f"Tool '{prepared.tool_call.function_name}' execution failed"
+                        ) from e
+            finally:
+                # Ensure we clean up the executor
+                executor.shutdown(wait=False, cancel_futures=True)
 
         return results

@@ -10,11 +10,12 @@ class TextFileType(Enum):
     YAML = "yaml"
     XML = "xml"
     TEXT = "text"
+    CSV = "csv"
 
 
 class BinaryFileType(Enum):
     PDF = "pdf"
     DOC = "doc"
-    CSV = "csv"
     PPT = "ppt"
+    XLS = "xls"
     IMG = "img"

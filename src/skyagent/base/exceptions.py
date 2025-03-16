@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 
-class SkyAgentError(Exception):
+class _SkyAgentError(Exception):
     """Parent exception of all sky agent exceptions."""
 
 
-class SkyAgentToolParsingError(SkyAgentError):
+class SkyAgentToolParsingError(_SkyAgentError):
     """Base exception for AgentTool-related errors."""
 
 
-class SkyAgentDetrimentalError(SkyAgentError):
+class SkyAgentDetrimentalError(_SkyAgentError):
     """Exception meaning the error was not recoverable, and the Agent must terminate."""
 
 
-class SkyAgentContextWindowSaturatedError(SkyAgentError):
+class SkyAgentContextWindowSaturatedError(_SkyAgentError):
     """Exception meaning the conversation is larger then the context window."""
 
 
-class SkyAgentCopyrightError(SkyAgentError):
+class SkyAgentCopyrightError(_SkyAgentError):
     """Exception meaning that the conversation included copyright material, thus could not be answered."""
 
 
@@ -31,3 +31,11 @@ class SkyAgentValidationError(Exception):
 
 class SkyAgentFileError(Exception):
     """Base error for file operation issues"""
+
+
+class SkyAgentNotSupportedError(Exception):
+    """Base error for unsupported operations"""
+
+
+class SkyAgentTypeError(Exception):
+    """Base error for unsupported operations or unexpected types"""

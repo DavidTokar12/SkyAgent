@@ -8,43 +8,45 @@ from skyagent.base.tools import ToolCall  # noqa: TCH001
 
 
 if TYPE_CHECKING:
-    from skyagent.base.chat_message import BaseChatMessage
+    from skyagent.base.chat_message import _BaseMessage
     from skyagent.base.chat_message import ToolCallOutgoingMessage
-    from skyagent.base.tools import BaseTool
+    from skyagent.base.tools import Tool
     from skyagent.base.tools import ToolCallResult
 
 
-class LlmUsage(BaseModel):
-    completion_tokens: int
-    prompt_tokens: int
+class ApiUsage(BaseModel):
+    output_tokens: int
+    input_tokens: int
 
 
 class CompletionResponse(BaseModel):
     content: str | BaseModel | None
     tool_calls: list[ToolCall] | None
-    usage: LlmUsage
+    usage: ApiUsage
 
 
-class LlmApiAdapter:
+class ApiAdapter:
 
     def __init__(
         self,
         model: str,
         token: str | None = None,
-        temperature: float = 0.0,
-        timeout: int = 3,
+        timeout: int = 10,
+        model_extra_args: dict | None = None,
+        client_extra_args: dict | None = None,
     ):
 
         self.model = model
         self.token = token
-        self.temperature = temperature
         self.timeout = timeout
+        self.model_extra_args = model_extra_args
+        self.client_extra_args = client_extra_args
 
     def get_completion(
         self,
-        message_history: list[BaseChatMessage],
+        message_history: list[_BaseMessage],
         response_format: BaseModel | None = None,
-        tools: list[BaseTool] | None = None,
+        tools: list[Tool] | None = None,
     ) -> CompletionResponse:
         raise NotImplementedError("The get_completion method must be implemented!")
 
@@ -52,5 +54,8 @@ class LlmApiAdapter:
         self, tool_call_result: ToolCallResult
     ) -> ToolCallOutgoingMessage:
         raise NotImplementedError(
-            "The generate_tool_result_answer method must be implemented!"
+            "The convert_tool_result_answer method must be implemented!"
         )
+
+    def tool_to_dict(self, tool: Tool) -> dict:
+        raise NotImplementedError("The tool_to_dict method must be implemented!")

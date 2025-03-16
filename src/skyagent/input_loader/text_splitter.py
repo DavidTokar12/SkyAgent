@@ -4,7 +4,7 @@ from abc import ABC
 from abc import abstractmethod
 
 
-class TextSplitter(ABC):
+class BaseTextSplitter(ABC):
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class TextSplitter(ABC):
         """Split the input file content into chunks."""
 
 
-class SimpleTextSplitter(TextSplitter):
+class SimpleTextSplitter(BaseTextSplitter):
     def split(self, input_file_content: str) -> list[str]:
         """
         Split text into chunks of maximum size with overlap.
