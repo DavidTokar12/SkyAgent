@@ -34,6 +34,7 @@ class _BaseMessage(BaseModel, ABC):
 
 class SystemMessage(_BaseMessage):
     "Represents a system message in a chat history."
+
     role: _MessageRole = _MessageRole.system
 
     def __str__(self) -> str:
@@ -46,6 +47,7 @@ class SystemMessage(_BaseMessage):
 
 class AssistantMessage(_BaseMessage):
     "Represents an assistant message in a chat history."
+
     role: _MessageRole = _MessageRole.assistant
     content: str
 
