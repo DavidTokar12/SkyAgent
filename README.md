@@ -8,11 +8,14 @@
 
 # Features  
 
+---
 
 # Why Choose SkyAgent?  
 
+---
 
 # Currently Supported LLM APIs  
 
+---
 
 # Get Started
