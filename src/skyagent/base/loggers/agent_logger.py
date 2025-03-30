@@ -13,9 +13,9 @@ from skyagent.base.loggers.base_agent_logger import BaseAgentLogger
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from skyagent.base.api_adapters.api_adapter import CompletionResponse
-    from skyagent.base.chat_message import _BaseMessage
-    from skyagent.base.tools import Tool
+    from skyagent.messages import BaseMessagePart
+    from skyagent.providers.provider import IterationResponse
+    from skyagent.tool import Tool
 
 
 class AgentLogger(BaseAgentLogger):
@@ -26,7 +26,7 @@ class AgentLogger(BaseAgentLogger):
         agent_id: str,
         agent_name: str,
         agent_model: str,
-        agent_chat_history: list[_BaseMessage],
+        agent_chat_history: list[BaseMessagePart],
         agent_tools: list[Tool],
         log_file_path: Path | None = None,
     ):
@@ -74,11 +74,15 @@ class AgentLogger(BaseAgentLogger):
         self._logger.debug(
             "Initialized Agent with model '%s', tool definitions: '%s'",
             self._agent_model,
-            [tool.name for tool in self._agent_tools] if self._agent_tools else [],
+            (
+                [tool._tool_name for tool in self._agent_tools]
+                if self._agent_tools
+                else []
+            ),
         )
 
     def _log_input_chat_history_received_impl(
-        self, input_chat_history: list[_BaseMessage]
+        self, input_chat_history: list[BaseMessagePart]
     ) -> None:
         self._logger.debug(
             "Agent received input chat history: '%s'", input_chat_history
@@ -88,7 +92,7 @@ class AgentLogger(BaseAgentLogger):
         self._logger.debug("Response loop '%s' starting.", turn)
 
     def _log_final_completion_impl(
-        self, completion: CompletionResponse, execution_time: float
+        self, completion: IterationResponse, execution_time: float
     ) -> None:
         self._logger.debug("Final chat history: '%s'", self._agent_chat_history)
         self._logger.debug("Received final completion from model: '%s'", completion)

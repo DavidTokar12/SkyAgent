@@ -13,9 +13,9 @@ from skyagent.base.loggers.base_agent_logger import BaseAgentLogger
 
 
 if TYPE_CHECKING:
-    from skyagent.base.api_adapters.api_adapter import CompletionResponse
-    from skyagent.base.chat_message import _BaseMessage
-    from skyagent.base.tools import Tool
+    from skyagent.messages import BaseMessagePart
+    from skyagent.providers.provider import IterationResponse
+    from skyagent.tool import Tool
 
 
 class RichAgentLogger(BaseAgentLogger):
@@ -26,7 +26,7 @@ class RichAgentLogger(BaseAgentLogger):
         agent_id: str,
         agent_name: str,
         agent_model: str,
-        agent_chat_history: list[_BaseMessage],
+        agent_chat_history: list[BaseMessagePart],
         agent_tools: list[Tool],
     ):
         self._console = Console()
@@ -65,7 +65,7 @@ class RichAgentLogger(BaseAgentLogger):
         self.update_live_dashboard()
 
     def _log_input_chat_history_received_impl(
-        self, input_chat_history: list[_BaseMessage]
+        self, input_chat_history: list[BaseMessagePart]
     ) -> None:
         self.update_live_dashboard()
 
@@ -73,7 +73,7 @@ class RichAgentLogger(BaseAgentLogger):
         self.update_live_dashboard()
 
     def _log_final_completion_impl(
-        self, completion: CompletionResponse, execution_time: float
+        self, completion: IterationResponse, execution_time: float
     ) -> None:
         self._agent_final_result = completion.content
         self.update_live_dashboard()

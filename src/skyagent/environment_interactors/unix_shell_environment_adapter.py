@@ -9,7 +9,6 @@ import pexpect
 
 from pydantic import BaseModel
 
-from skyagent.base.exceptions import SkyAgentDetrimentalError
 from skyagent.environment_interactors.environment_interactor import EnvironmentAdapter
 from skyagent.environment_interactors.environment_interactor import InteractionHistory
 from skyagent.environment_interactors.environment_interactor import (
@@ -18,6 +17,7 @@ from skyagent.environment_interactors.environment_interactor import (
 from skyagent.environment_interactors.environment_interactor import (
     ShellInteractionOutput,
 )
+from skyagent.exceptions import SkyAgentDetrimentalError
 
 
 class InteractionType(Enum):

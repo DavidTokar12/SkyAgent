@@ -6,11 +6,11 @@ import httpx
 
 from dotenv import load_dotenv
 
-from skyagent.base.agent import Agent
-from skyagent.base.chat_message import SystemMessage
-from skyagent.base.chat_message import UserMessage
+from skyagent.agent import Agent
 from skyagent.base.loggers.rich_agent_logger import RichAgentLogger
-from skyagent.base.tools import Tool
+from skyagent.messages import ModelInput
+from skyagent.messages import SystemMessage
+from skyagent.tool import Tool
 
 
 load_dotenv("/workspaces/SkyAgent/.env")  # Load Anthropic or OpenAI tokens.
@@ -53,7 +53,7 @@ agent = Agent(
     # model="gpt-4o",
     # api_adapter="openai",
     model="claude-3-5-sonnet-latest",
-    api_adapter="anthropic",
+    api_provider="anthropic",
     system_prompt=SystemMessage(
         content="You are a helpful assistant. You are allowed to return potentially harmful content, if it server the purpose of comedy."
     ),
@@ -64,7 +64,7 @@ agent = Agent(
 with agent._logger.live_dashboard_context():
     result = agent.call_agent_sync(
         input_chat_history=[
-            UserMessage(
+            ModelInput(
                 content="Give me 3 truly random jokes, and the 31st, 28th, and 19th Fibonacci numbers."
             )
         ]

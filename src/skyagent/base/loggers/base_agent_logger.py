@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from skyagent.base.api_adapters.api_adapter import CompletionResponse
-    from skyagent.base.chat_message import _BaseMessage
-    from skyagent.base.tools import Tool
+    from skyagent.messages import BaseMessagePart
+    from skyagent.providers.provider import IterationResponse
+    from skyagent.tool import Tool
 
 
 class AgentStatus(Enum):
@@ -29,7 +29,7 @@ class BaseAgentLogger(ABC):
         agent_id: str,
         agent_name: str,
         agent_model: str,
-        agent_chat_history: list[_BaseMessage],
+        agent_chat_history: list[BaseMessagePart],
         agent_tools: list[Tool],
     ):
         self._agent_id = agent_id
@@ -61,7 +61,7 @@ class BaseAgentLogger(ABC):
         """Log that the agent has finished initializing."""
 
     def log_input_chat_history_received(
-        self, input_chat_history: list[_BaseMessage]
+        self, input_chat_history: list[BaseMessagePart]
     ) -> None:
         """Log that the agent received a chat history input."""
         self._status = AgentStatus.CALLING_LLM
@@ -69,7 +69,7 @@ class BaseAgentLogger(ABC):
 
     @abstractmethod
     def _log_input_chat_history_received_impl(
-        self, input_chat_history: list[_BaseMessage]
+        self, input_chat_history: list[BaseMessagePart]
     ) -> None:
         """Log that the agent received a chat history input."""
 
@@ -83,7 +83,7 @@ class BaseAgentLogger(ABC):
         """Log that a chat loop has begun for a given turn."""
 
     def log_final_completion(
-        self, completion: CompletionResponse, execution_time: float
+        self, completion: IterationResponse, execution_time: float
     ) -> None:
         """Log the agent's final completion response."""
 
@@ -95,7 +95,7 @@ class BaseAgentLogger(ABC):
 
     @abstractmethod
     def _log_final_completion_impl(
-        self, completion: CompletionResponse, execution_time: float
+        self, completion: IterationResponse, execution_time: float
     ) -> None:
         """Log the agent's final completion response."""
 

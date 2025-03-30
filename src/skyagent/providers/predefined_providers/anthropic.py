@@ -6,28 +6,28 @@ from typing import Any
 
 from anthropic import Anthropic
 
-from skyagent.base.api_adapters.api_adapter import ApiAdapter
-from skyagent.base.api_adapters.api_adapter import ApiUsage
-from skyagent.base.api_adapters.api_adapter import CompletionResponse
-from skyagent.base.chat_message import AssistantMessage
-from skyagent.base.chat_message import _BaseMessage
-from skyagent.base.chat_message import SystemMessage
-from skyagent.base.chat_message import ToolCallOutgoingMessage
-from skyagent.base.chat_message import UserMessage
-from skyagent.base.exceptions import SkyAgentContextWindowSaturatedError
-from skyagent.base.exceptions import SkyAgentDetrimentalError
-from skyagent.base.tools import ToolCall
-from skyagent.base.tools import ToolCallResult
-from skyagent.utils import _model_to_string
+from skyagent.exceptions import SkyAgentContextWindowSaturatedError
+from skyagent.exceptions import SkyAgentDetrimentalError
+from skyagent.messages import AssistantMessage
+from skyagent.messages import BaseMessagePart
+from skyagent.messages import ModelInput
+from skyagent.messages import SystemMessage
+from skyagent.messages import ToolCallOutgoingMessage
+from skyagent.providers.provider import ApiUsage
+from skyagent.providers.provider import IterationResponse
+from skyagent.providers.provider import Provider
+from skyagent.tool import ToolCall
+from skyagent.tool import ToolCallResult
+from skyagent.utils import model_to_string
 
 
 if TYPE_CHECKING:
     from anthropic.types import Message
 
-    from skyagent.base.tools import Tool
+    from skyagent.tool import Tool
 
 
-class AnthropicApiAdapter(ApiAdapter):
+class AnthropicApiAdapter(Provider):
 
     def __init__(
         self,
@@ -42,22 +42,22 @@ class AnthropicApiAdapter(ApiAdapter):
             model=model,
             token=token,
             timeout=timeout,
-            model_extra_args=model_extra_args,
-            client_extra_args=client_extra_args,
+            model_settings=model_extra_args,
+            client_settings=client_extra_args,
         )
 
         self.client = Anthropic(
             api_key=self.token,
             timeout=self.timeout,
-            **(self.client_extra_args if self.client_extra_args is not None else {}),
+            **(self.client_settings if self.client_settings is not None else {}),
         )
 
     def get_completion(
         self,
-        chat_history: list[_BaseMessage],
+        chat_history: list[BaseMessagePart],
         response_format: Any | None = None,
         tools: list[Tool] | None = None,
-    ) -> CompletionResponse:
+    ) -> IterationResponse:
 
         if len(chat_history) == 0:
             raise SkyAgentDetrimentalError("message_history cannot be an empty array!")
@@ -89,7 +89,7 @@ class AnthropicApiAdapter(ApiAdapter):
             system_message = None
 
             for item in grouped_history:
-                if isinstance(item, UserMessage):
+                if isinstance(item, ModelInput):
                     pass
                     # text_and_image_messages = item.to_text_and_image_messages()
                     # if item.attached_images:
@@ -153,7 +153,7 @@ class AnthropicApiAdapter(ApiAdapter):
                 messages.append(
                     {
                         "role": "user",
-                        "content": f"Your output must be a valid JSON object with the following schema:\n{_model_to_string(response_format)}",
+                        "content": f"Your output must be a valid JSON object with the following schema:\n{model_to_string(response_format)}",
                     }
                 )
 
@@ -198,7 +198,7 @@ class AnthropicApiAdapter(ApiAdapter):
 
                     parsed_tool_calls.append(parsed_tool_call)
 
-            return CompletionResponse(
+            return IterationResponse(
                 content=None, tool_calls=parsed_tool_calls, usage=usage
             )
 
@@ -214,7 +214,7 @@ class AnthropicApiAdapter(ApiAdapter):
                         f"Failed to validate response format: {e}"
                     )
 
-            return CompletionResponse(
+            return IterationResponse(
                 content=final_response,
                 tool_calls=None,
                 usage=usage,
@@ -236,15 +236,15 @@ class AnthropicApiAdapter(ApiAdapter):
     def tool_to_dict(self, tool: Tool) -> dict:
 
         properties_dict = {
-            param.name: {
-                "type": param.type,
+            param.param_name: {
+                "type": param.param_type,
                 "description": param.description,
             }
             for param in tool.parameters
         }
 
         return {
-            "name": tool.name,
+            "name": tool._tool_name,
             "description": tool.description,
             "input_schema": {
                 "type": "object",
@@ -284,7 +284,7 @@ class AnthropicApiAdapter(ApiAdapter):
         if completion_args.get("max_tokens") is None:
             completion_args["max_tokens"] = 4096
 
-        if self.model_extra_args:
-            completion_args.update(self.model_extra_args)
+        if self.model_settings:
+            completion_args.update(self.model_settings)
 
         return completion_args

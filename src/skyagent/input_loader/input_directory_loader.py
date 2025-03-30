@@ -10,8 +10,8 @@ from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
-from skyagent.base.exceptions import SkyAgentFileError
-from skyagent.base.exceptions import SkyAgentValidationError
+from skyagent.exceptions import SkyAgentFileError
+from skyagent.exceptions import SkyAgentValidationError
 from skyagent.input_loader._defaults import DEFAULT_FILE_CONVERTER_FUNCTIONS
 from skyagent.input_loader._defaults import DEFAULT_TEXT_SPLITTER
 from skyagent.input_loader.input_file_loader import InputFileLoader

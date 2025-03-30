@@ -3,7 +3,8 @@ from __future__ import annotations
 from dotenv import load_dotenv
 
 from skyagent.input_loader.input_file_loader import InputFileLoader
-from skyagent.base.chat_message import UserMessage
+from skyagent.messages import ModelInput
+
 
 load_dotenv("/workspaces/SkyAgent/.env")
 
@@ -28,7 +29,7 @@ file_attachment = (
 # logger=RichAgentLogger,
 # )
 
-input_with_file = UserMessage(
+input_with_file = ModelInput(
     content="Explain what you see in this file...",
     attached_files=[file_attachment],
 )

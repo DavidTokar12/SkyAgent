@@ -9,10 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from skyagent.base.chat_message import FileAttachment
-from skyagent.base.chat_message import ImageAttachment
-from skyagent.base.exceptions import SkyAgentFileError
-from skyagent.base.exceptions import SkyAgentValidationError
+from skyagent.exceptions import SkyAgentFileError
+from skyagent.exceptions import SkyAgentValidationError
 from skyagent.input_loader._conversion_mappings import CONVERSION_MAPPINGS
 from skyagent.input_loader._defaults import DEFAULT_FILE_CONVERTER_FUNCTIONS
 from skyagent.input_loader._defaults import DEFAULT_TEXT_SPLITTER
@@ -20,7 +18,9 @@ from skyagent.input_loader._file_extensions import BINARY_FILE_EXTENSIONS
 from skyagent.input_loader._file_extensions import TEXT_FILE_EXTENSIONS
 from skyagent.input_loader.file_types import BinaryFileType
 from skyagent.input_loader.file_types import TextFileType
-from skyagent.utils import _is_binary_string
+from skyagent.messages import FileAttachment
+from skyagent.messages import ImageAttachment
+from skyagent.utils import is_binary_string
 
 
 if TYPE_CHECKING:
@@ -116,7 +116,7 @@ class InputFileLoader:
         with self._original_input_path.open("rb") as f:
             sample_bytes = f.read(1024)
 
-        is_bin = _is_binary_string(sample_bytes)
+        is_bin = is_binary_string(sample_bytes)
 
         if not is_bin:
 

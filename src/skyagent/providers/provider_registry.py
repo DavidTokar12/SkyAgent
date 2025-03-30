@@ -6,33 +6,33 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import ClassVar
 
-from skyagent.base.exceptions import SkyAgentNotSupportedError
+from skyagent.exceptions import SkyAgentNotSupportedError
 
 
 @dataclass
-class ApiProviderConfig:
+class ProviderConfig:
     """Configuration for an API provider."""
 
     module_path: str
     adapter_class_name: str
 
 
-class ApiRegistry:
-    _providers: ClassVar[dict[str, ApiProviderConfig]] = {}
+class ProviderRegistry:
+    _providers: ClassVar[dict[str, ProviderConfig]] = {}
 
     @classmethod
     def register(
         cls, name: str, module_path: str, adapter_class_name: str, **default_kwargs
     ):
         """Register a new provider configuration."""
-        cls._providers[name] = ApiProviderConfig(
+        cls._providers[name] = ProviderConfig(
             module_path=module_path,
             adapter_class_name=adapter_class_name,
         )
 
     @classmethod
     @lru_cache
-    def get_adapter_class(cls, provider: str) -> type:
+    def get_provider_class(cls, provider: str) -> type:
         """Get the adapter class for a provider."""
 
         if provider not in cls._providers:
@@ -46,13 +46,13 @@ class ApiRegistry:
         return adapter_class
 
 
-ApiRegistry.register(
+ProviderRegistry.register(
     "openai",
     "skyagent.base.api_adapters.predefined_adapters.openai",
     "OpenAiApiAdapter",
 )
 
-ApiRegistry.register(
+ProviderRegistry.register(
     "anthropic",
     "skyagent.base.api_adapters.predefined_adapters.anthropic",
     "AnthropicApiAdapter",
