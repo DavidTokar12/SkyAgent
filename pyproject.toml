@@ -6,7 +6,7 @@ authors = ["David Tokar <1413david@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<4.0"	
+python = ">=3.10,<4.0"	
 openai = "^1.58.1"
 pydantic = "^2.10.4"
 docstring-parser = "^0.16"
@@ -18,6 +18,7 @@ html2text = "^2024.2.26"
 identify = "^2.6.7"
 pandas = "^2.2.3"
 pillow = "^11.1.0"
+delta-stream = "^0.1.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.7.2"
